@@ -23,6 +23,25 @@ def test_synthesize_section_returns_section():
     assert sec.findings[0].citation.url == "https://news.com/a"
 
 
+class WrongDimensionLLM:
+    """Returns a section stamped with the wrong dimension, mimicking a loosely-prompted
+    model that reuses a sample section verbatim instead of echoing the requested dimension."""
+
+    def structured(self, prompt, schema):
+        return schema(
+            dimension=Dimension.LEGAL,
+            findings=[],
+            reasoning="clean",
+            score=8,
+        )
+
+
+def test_synthesize_section_corrects_mismatched_dimension():
+    results = [{"title": "n/a", "content": "n/a", "url": "https://x.com", "score": 0.5}]
+    sec = synthesize_section(Dimension.FINANCIAL, results, llm=WrongDimensionLLM())
+    assert sec.dimension is Dimension.FINANCIAL
+
+
 def test_assemble_verdict_averages_and_explains():
     secs = [
         Section(dimension=Dimension.LEGAL, findings=[], reasoning="clean", score=9),

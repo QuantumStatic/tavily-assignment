@@ -23,7 +23,13 @@ def synthesize_section(dim: Dimension, results: list[dict[str, Any]], *, llm: LL
         f"- score={r.get('score')} | {r.get('title','')} | {r.get('url','')} | {r.get('content','')}"
         for r in results
     ) or "(no results found)"
-    return llm.structured(_PROMPT.format(dimension=dim.value, results=rendered), Section)
+    section = llm.structured(_PROMPT.format(dimension=dim.value, results=rendered), Section)
+    # The LLM's structured output isn't guaranteed to echo back the exact dimension we asked it
+    # to write about (e.g. loosely-prompted models may reuse a single sample section verbatim).
+    # Force it to the dimension we actually requested so section identity is deterministic.
+    if section.dimension is not dim:
+        section = section.model_copy(update={"dimension": dim})
+    return section
 
 
 def assemble_verdict(sections: list[Section]) -> tuple[int, str]:
