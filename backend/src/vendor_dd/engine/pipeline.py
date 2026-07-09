@@ -27,21 +27,9 @@ class Deps:
     fetch_transcript: Callable[[str], tuple[str | None, str | None]]
 
 
-def _synthesize(dim: Dimension, results, llm: LLMClient) -> Section:
-    """synthesize_section() forwards whatever `dimension` the LLM happened to fill in on the
-    structured output, which need not match the dimension we asked it to write about (an LLM's
-    structured output isn't guaranteed to echo back the exact field we told it to; and in
-    practice, e.g. FakeLLM/loosely-prompted models may reuse a single sample section verbatim).
-    Force it to the dimension we actually requested so section identity is deterministic."""
-    section = synthesize_section(dim, results, llm=llm)
-    if section.dimension is not dim:
-        section = section.model_copy(update={"dimension": dim})
-    return section
-
-
 def run_report(vendor: str, deps: Deps) -> Report:
     entity = resolve_entity(vendor, search=deps.search, llm=deps.llm)
-    vendor_key = entity.domain or entity.name.lower()
+    vendor_key = (entity.domain or entity.name).strip().lower()
     cache = SQLiteCache(deps.cache_path)
     sections: list[Section] = []
 
@@ -51,7 +39,7 @@ def run_report(vendor: str, deps: Deps) -> Report:
             sections.append(Section.model_validate(cached))
             continue
         results = retrieve_dimension(dim, entity, search=deps.search, today=deps.today)
-        section = _synthesize(dim, results, deps.llm)
+        section = synthesize_section(dim, results, llm=deps.llm)
         cache.put(vendor_key, dim, section.model_dump(mode="json"))
         sections.append(section)
 
@@ -78,6 +66,6 @@ def _backlog_section(entity, deps: Deps, cache: SQLiteCache, vendor_key: str) ->
     if not results:  # private or no transcript -> reuse positive-news as a backlog proxy
         results = retrieve_dimension(Dimension.NEWS_POSITIVE, entity,
                                      search=deps.search, today=deps.today)
-    section = _synthesize(Dimension.BACKLOG, results, deps.llm)
+    section = synthesize_section(Dimension.BACKLOG, results, llm=deps.llm)
     cache.put(vendor_key, Dimension.BACKLOG, section.model_dump(mode="json"))
     return section
