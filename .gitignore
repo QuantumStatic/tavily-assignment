@@ -1,0 +1,32 @@
+# Secrets — NEVER commit real keys
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local cache / DB
+*.db
+*.sqlite
+*.sqlite3
+.cache/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Assignment scaffold — do not ship in the deliverable repo
+starter_agent.py
