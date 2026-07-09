@@ -18,6 +18,9 @@ dependencies = [
     "trafilatura>=1.8.0",
 ]
 
+[project.scripts]
+vendor-dd = "vendor_dd.surfaces.cli:app"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
