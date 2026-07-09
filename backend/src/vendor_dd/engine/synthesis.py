@@ -4,18 +4,7 @@ from typing import Any
 
 from vendor_dd.engine.llm import LLMClient
 from vendor_dd.engine.schemas import Dimension, Section
-
-_PROMPT = """You are a due-diligence analyst. From these search results about the vendor,
-produce the "{dimension}" section. Rules:
-- Emit findings FIRST (each a claim + its citation url/title/score), THEN reasoning, THEN score.
-- score is 0-10 where 10 = all good / confident to use, 0 = serious problems.
-- Only use claims supported by a result; set source_type=self_reported if the source is the
-  vendor's own site, else independent.
-- If coverage is thin, do NOT award a confident high score; say so in reasoning.
-
-Results:
-{results}
-"""
+from vendor_dd.prompts.synthesis import SECTION_SYNTHESIS_PROMPT
 
 
 def synthesize_section(dim: Dimension, results: list[dict[str, Any]], *, llm: LLMClient) -> Section:
@@ -23,7 +12,7 @@ def synthesize_section(dim: Dimension, results: list[dict[str, Any]], *, llm: LL
         f"- score={r.get('score')} | {r.get('title','')} | {r.get('url','')} | {r.get('content','')}"
         for r in results
     ) or "(no results found)"
-    section = llm.structured(_PROMPT.format(dimension=dim.value, results=rendered), Section)
+    section = llm.structured(SECTION_SYNTHESIS_PROMPT.format(dimension=dim.value, results=rendered), Section)
     # The LLM's structured output isn't guaranteed to echo back the exact dimension we asked it
     # to write about (e.g. loosely-prompted models may reuse a single sample section verbatim).
     # Force it to the dimension we actually requested so section identity is deterministic.
