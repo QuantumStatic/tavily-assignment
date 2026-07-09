@@ -10,7 +10,7 @@ from vendor_dd.engine.cache import SQLiteCache
 from vendor_dd.engine.entity import resolve_entity
 from vendor_dd.engine.llm import LLMClient
 from vendor_dd.engine.retrieval import retrieve_dimension
-from vendor_dd.engine.schemas import Dimension, Report, Section
+from vendor_dd.engine.schemas import Dimension, EntityCard, Report, Section
 from vendor_dd.engine.synthesis import assemble_verdict, synthesize_section
 from vendor_dd.engine.tavily_client import SearchClient
 
@@ -27,11 +27,31 @@ class Deps:
     fetch_transcript: Callable[[str], tuple[str | None, str | None]]
 
 
-def run_report(vendor: str, deps: Deps) -> Report:
+def _normalize_name(name: str) -> str:
+    return name.strip().lower()
+
+
+def _resolve_entity_cached(vendor: str, deps: Deps, cache: SQLiteCache) -> EntityCard:
+    """Entity resolution is cached by the raw (normalized) input name, since the
+    resolved domain isn't known until after resolution runs. Reusing Dimension.SNAPSHOT
+    as the cache slot: its DimensionConfig/TTL entries already exist but are otherwise
+    unused (SNAPSHOT is not a Tavily-retrieved report section)."""
+    name_key = _normalize_name(vendor)
+    cached = cache.get(name_key, Dimension.SNAPSHOT)
+    if cached is not None:
+        return EntityCard.model_validate(cached)
+
     entity = resolve_entity(vendor, search=deps.search, llm=deps.llm)
-    vendor_key = (entity.domain or entity.name).strip().lower()
+    cache.put(name_key, Dimension.SNAPSHOT, entity.model_dump(mode="json"))
+    return entity
+
+
+def run_report(vendor: str, deps: Deps) -> Report:
     cache = SQLiteCache(deps.cache_path)
+    entity = _resolve_entity_cached(vendor, deps, cache)
+    vendor_key = (entity.domain or entity.name).strip().lower()
     sections: list[Section] = []
+    news_positive_results: list[dict] | None = None
 
     for dim in _TAVILY_DIMS:
         cached = cache.get(vendor_key, dim)
@@ -39,18 +59,21 @@ def run_report(vendor: str, deps: Deps) -> Report:
             sections.append(Section.model_validate(cached))
             continue
         results = retrieve_dimension(dim, entity, search=deps.search, today=deps.today)
+        if dim is Dimension.NEWS_POSITIVE:
+            news_positive_results = results
         section = synthesize_section(dim, results, llm=deps.llm)
         cache.put(vendor_key, dim, section.model_dump(mode="json"))
         sections.append(section)
 
-    sections.append(_backlog_section(entity, deps, cache, vendor_key))
+    sections.append(_backlog_section(entity, deps, cache, vendor_key, news_positive_results))
 
     score, reasoning = assemble_verdict(sections)
     return Report(vendor_input=vendor, entity=entity, sections=sections,
                   verdict_score=score, verdict_reasoning=reasoning)
 
 
-def _backlog_section(entity, deps: Deps, cache: SQLiteCache, vendor_key: str) -> Section:
+def _backlog_section(entity, deps: Deps, cache: SQLiteCache, vendor_key: str,
+                      news_positive_results: list[dict] | None) -> Section:
     cached = cache.get(vendor_key, Dimension.BACKLOG)
     if cached is not None:
         return Section.model_validate(cached)
@@ -64,8 +87,16 @@ def _backlog_section(entity, deps: Deps, cache: SQLiteCache, vendor_key: str) ->
                 results = [{"title": "Earnings call transcript", "url": quote_url,
                             "content": text[:6000], "score": 1.0, "as_of": call_date}]
     if not results:  # private or no transcript -> reuse positive-news as a backlog proxy
-        results = retrieve_dimension(Dimension.NEWS_POSITIVE, entity,
-                                     search=deps.search, today=deps.today)
+        if news_positive_results is not None:
+            # NEWS_POSITIVE was freshly retrieved this run (not a cache hit) -> reuse
+            # those raw results instead of paying for a second, identical Tavily call.
+            results = news_positive_results
+        else:
+            # NEWS_POSITIVE was served from cache this run, so there are no fresh raw
+            # results to reuse. This is a rarer path (news has a 1-day TTL, so it's
+            # usually stale/refetched), so falling back to a live call here is acceptable.
+            results = retrieve_dimension(Dimension.NEWS_POSITIVE, entity,
+                                         search=deps.search, today=deps.today)
     section = synthesize_section(Dimension.BACKLOG, results, llm=deps.llm)
     cache.put(vendor_key, Dimension.BACKLOG, section.model_dump(mode="json"))
     return section
