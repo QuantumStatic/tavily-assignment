@@ -1,6 +1,7 @@
 from datetime import date
 from vendor_dd.engine.schemas import Dimension, EntityCard
 from vendor_dd.engine.tavily_client import build_search_kwargs
+from vendor_dd.engine.retrieval import retrieve_dimension
 
 
 def _entity():
@@ -29,3 +30,20 @@ def test_certifications_include_own_domain():
     kw = build_search_kwargs(Dimension.CERTIFICATIONS, _entity(), today=date(2026, 7, 8))
     assert kw["include_domains"] == ["cives.com"]
     assert "start_date" not in kw                     # recency_days is None
+
+
+class FakeSearchWithContamination:
+    def search(self, **kwargs):
+        return {"results": [
+            {"title": "Cives Steel shutting down 130 jobs", "content": "Cives Steel Company closed",
+             "url": "https://news.com/a", "score": 0.59},
+            {"title": "Bayou Steel bankruptcy", "content": "Bayou Steel filed", "score": 0.18,
+             "url": "https://news.com/b"},   # wrong company + low score -> dropped
+        ]}
+
+
+def test_retrieve_dimension_filters_contamination():
+    kept = retrieve_dimension(Dimension.FINANCIAL, _entity(),
+                              search=FakeSearchWithContamination(), today=date(2026, 7, 8))
+    assert len(kept) == 1
+    assert kept[0]["url"] == "https://news.com/a"
