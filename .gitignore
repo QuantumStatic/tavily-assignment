@@ -30,3 +30,4 @@ dist/
 
 # Assignment scaffold — do not ship in the deliverable repo
 starter_agent.py
+.worktrees/
