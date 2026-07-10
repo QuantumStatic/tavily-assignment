@@ -16,11 +16,12 @@ _NEBIUS_BASE_URL = "https://api.tokenfactory.us-central1.nebius.com/v1/"
 
 
 def _to_strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Recursively enforce OpenAI 'strict' tool-schema requirements (every object
+    """Recursively enforce OpenAI 'strict' json_schema requirements (every object
     forbids extra properties and lists every declared property as required, including
     nested $defs). Verified live against Nebius: without `strict=True` + this shape,
-    nvidia/Nemotron-3-Ultra-550b-a55b's tool-calling frequently drops required fields or
-    stuffs free text into list fields; with it, output reliably matches the schema."""
+    nvidia/Nemotron-3-Ultra-550b-a55b's structured output frequently drops required
+    fields or stuffs free text into list fields; with it, output reliably matches the
+    schema."""
     if schema.get("type") == "object" and "properties" in schema:
         schema["additionalProperties"] = False
         schema["required"] = list(schema["properties"].keys())
@@ -63,13 +64,20 @@ def _coerce_null_strings(data: dict[str, Any], schema: dict[str, Any]) -> dict[s
 
 class NebiusLLM:
     """Nebius Token Factory structured-output client: the raw OpenAI SDK's
-    chat.completions endpoint + strict function-calling.
+    chat.completions endpoint with native `response_format=json_schema` — no tool
+    calling.
 
-    Not LangChain, and not /v1/responses: as of 2026-07, Nebius's /v1/responses
-    implementation has a confirmed bug (raw unparsed `<tool_call>` template text
-    surfaces in `function_call.arguments` instead of JSON), and its json_schema
-    text-format path 400s on a field-name mismatch. /v1/chat/completions with
-    `strict=True` tool calling is the verified-working path for this model.
+    Not /v1/responses: as of 2026-07, Nebius's /v1/responses implementation has a
+    confirmed bug (structured `text.format=json_schema` 400s on a server-side
+    field-name mismatch, `schema_` vs `schema`), even though plain-text responses
+    work fine there. /v1/chat/completions' native structured-output mode is the
+    verified-working path.
+
+    `reasoning_effort="none"` is required, not optional: this reasoning model leaks
+    chain-of-thought into the structured output without it — verified live 3x, e.g.
+    EntityCard.domain coming back None/EntityCard.ticker='null' (the literal string)
+    and Section failing schema validation outright with reasoning dumped into
+    `findings`. With it, output is clean and schema-valid.
     """
 
     def __init__(self, model: str = "nvidia/Nemotron-3-Ultra-550b-a55b",
@@ -85,27 +93,15 @@ class NebiusLLM:
         self._client = OpenAI(base_url=_NEBIUS_BASE_URL, api_key=key)
 
     def structured(self, prompt: str, schema: type[T]) -> T:
-        tool_name = schema.__name__
         json_schema = _to_strict_schema(schema.model_json_schema())
-        tool = {
-            "type": "function",
-            "function": {
-                "name": tool_name,
-                "description": f"Record the {tool_name} result.",
-                "parameters": json_schema,
-                "strict": True,
-            },
-        }
         resp = self._client.chat.completions.create(
             model=self._model,
             messages=[{"role": "user", "content": prompt}],
-            tools=[tool],
-            tool_choice={"type": "function", "function": {"name": tool_name}},
-            # "none" disables this reasoning model's chain-of-thought leaking into tool
-            # arguments (verified live: "low"/default corrupt multiple fields with
-            # inline reasoning text; unset silently defaults to on for this model).
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": schema.__name__, "schema": json_schema, "strict": True},
+            },
             reasoning_effort="none",
         )
-        call = resp.choices[0].message.tool_calls[0]
-        data = _coerce_null_strings(json.loads(call.function.arguments), json_schema)
+        data = _coerce_null_strings(json.loads(resp.choices[0].message.content), json_schema)
         return schema.model_validate(data)
