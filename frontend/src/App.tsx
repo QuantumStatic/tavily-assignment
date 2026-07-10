@@ -9,6 +9,8 @@ import { Sidebar } from './components/Sidebar'
 import { AddVendorForm } from './components/AddVendorForm'
 import { VendorTable } from './components/VendorTable'
 import { ReportPanel } from './components/ReportPanel'
+import { ThemeToggle } from './components/ThemeToggle'
+import { useTheme } from './theme'
 
 type RowsAction =
   | { kind: 'set'; rows: RowState[] }
@@ -42,6 +44,7 @@ export default function App() {
   const [rows, dispatch] = useReducer(rowsReducer, [])
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [theme, toggleTheme] = useTheme()
   const streams = useRef<Map<number, () => void>>(new Map())
   const activeIdRef = useRef(activeId)
 
@@ -151,6 +154,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <ThemeToggle theme={theme} onToggle={toggleTheme} />
       <Sidebar
         projects={projects}
         activeId={activeId}
