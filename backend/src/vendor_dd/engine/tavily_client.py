@@ -20,12 +20,14 @@ class SearchClient(Protocol):
 def build_search_kwargs(dim: Dimension, entity: EntityCard, *, today: date) -> dict[str, Any]:
     """Translate a dimension + entity card into Tavily search params (docs-backed)."""
     cfg = DIMENSION_CONFIGS[dim]
-    geo = "" if cfg.use_country else (entity.country or "")  # geo in query only when country unusable
     # Search on the common press name, never the full legal name — no article says
     # "Voith Hydro Holding GmbH & Co. KG", so quoting it returns zero hits.
     search_name = entity.search_name or entity.name
     name = f'"{search_name}"' if cfg.exact_match else search_name
-    query = cfg.query_template.format(name=name, geo=geo).replace("  ", " ").strip()
+    # No country in the query text: an international vendor's coverage is worldwide, so
+    # "Voith Germany ..." would exclude its non-German news. General dims still scope
+    # geography via Tavily's country param below.
+    query = cfg.query_template.format(name=name).strip()
 
     kwargs: dict[str, Any] = {
         "query": query,
