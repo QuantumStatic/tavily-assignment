@@ -36,3 +36,18 @@ test('a streaming row shows a pending indicator', () => {
   render(<VendorTable rows={[row]} onSelect={() => {}} onDelete={() => {}} />)
   expect(screen.getByTestId('cell-legal-pending')).toBeInTheDocument()
 })
+
+test('the delete button has an accessible name', () => {
+  const row = rowFromSummary(summary({ generated: true, verdict_score: 7, dimensions: [] }))
+  render(<VendorTable rows={[row]} onSelect={() => {}} onDelete={() => {}} />)
+  expect(screen.getByRole('button', { name: /delete vendor/i })).toBeInTheDocument()
+})
+
+test('pressing Enter on a focused row selects it', async () => {
+  const row = rowFromSummary(summary({ generated: true, verdict_score: 7, dimensions: [] }))
+  const onSelect = vi.fn()
+  render(<VendorTable rows={[row]} onSelect={onSelect} onDelete={() => {}} />)
+  screen.getByText('Cives').closest('tr')!.focus()
+  await userEvent.keyboard('{Enter}')
+  expect(onSelect).toHaveBeenCalledWith(1)
+})

@@ -9,10 +9,10 @@ export function VendorTable({
     <table className="vendor-table">
       <thead>
         <tr>
-          <th>Vendor</th>
-          <th>Verdict</th>
-          {DIMENSIONS.map((d) => <th key={d.key}>{d.label}</th>)}
-          <th aria-label="actions" />
+          <th scope="col">Vendor</th>
+          <th scope="col">Verdict</th>
+          {DIMENSIONS.map((d) => <th key={d.key} scope="col">{d.label}</th>)}
+          <th scope="col" aria-label="actions" />
         </tr>
       </thead>
       <tbody>

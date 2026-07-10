@@ -6,6 +6,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 .vendor-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #888; }
 .vendor-row { cursor: pointer; }
 .vendor-row:hover { background: #f6f8fa; }
+.vendor-row:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; }
 .vendor-name { font-weight: 600; }
 .cell.idle { color: #bbb; }
 .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-weight: 600; font-size: 12px; }
