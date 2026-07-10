@@ -9,16 +9,17 @@ def test_every_dimension_has_config():
         assert isinstance(DIMENSION_CONFIGS[dim], DimensionConfig)
 
 
-def test_news_uses_news_topic_and_90d_window():
+def test_news_uses_general_topic_with_a_news_keyword_and_90d_window():
+    # NOT the news topic — it returns recency-broad noise for low-coverage vendors.
     cfg = DIMENSION_CONFIGS[Dimension.NEWS]
-    assert cfg.topic == "news"
+    assert cfg.topic == "general"
+    assert cfg.query_template == "{name} news"
     assert cfg.recency_days == 90
 
 
-def test_topic_scoped_dimensions_drop_keyword_stuffing():
-    # finance/news topics scope the search themselves — the query is just the name.
+def test_finance_dimension_drops_keyword_stuffing():
+    # finance topic scopes the search itself — the query is just the name.
     assert DIMENSION_CONFIGS[Dimension.FINANCIAL].query_template == "{name}"
-    assert DIMENSION_CONFIGS[Dimension.NEWS].query_template == "{name}"
 
 
 def test_financial_and_backlog_use_finance_topic():
