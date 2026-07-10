@@ -37,7 +37,7 @@ def build_app() -> FastAPI:
     from dotenv import load_dotenv
 
     from vendor_dd.engine.backlog import fetch_transcript_text
-    from vendor_dd.engine.llm import NebiusLLM
+    from vendor_dd.engine.llm import OpenAILLM
     from vendor_dd.engine.tavily_client import TavilySearchClient
     from vendor_dd.logs import configure_logging, get_logger
 
@@ -47,12 +47,12 @@ def build_app() -> FastAPI:
     # app.py is backend/src/vendor_dd/surfaces/api/app.py, so parents[5] == project root
     # (where .env lives, one level above backend/).
     load_dotenv(Path(__file__).resolve().parents[5] / ".env")
-    tavily_key, nebius_key = os.getenv("TAVILY_API_KEY"), os.getenv("NEBIUS_API_KEY")
-    if not tavily_key or not nebius_key:
-        raise RuntimeError("Set TAVILY_API_KEY and NEBIUS_API_KEY in .env")
+    tavily_key, openai_key = os.getenv("TAVILY_API_KEY"), os.getenv("OPENAI_API_KEY")
+    if not tavily_key or not openai_key:
+        raise RuntimeError("Set TAVILY_API_KEY and OPENAI_API_KEY in .env")
     deps = Deps(
         search=TavilySearchClient(tavily_key),
-        llm=NebiusLLM(),
+        llm=OpenAILLM(),
         cache_path=Path(".vendor_dd_cache.db"),
         today=date.today(),
         fetch_transcript=fetch_transcript_text,

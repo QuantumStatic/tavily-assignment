@@ -1,184 +1,108 @@
-import json
+import json as _json
 
-from pydantic import BaseModel
+import httpx
+import pytest
+from openai import APIError, APITimeoutError
 
-from vendor_dd.engine.llm import LLMError, NebiusLLM
-from vendor_dd.engine.schemas import Citation, Dimension, EntityCard, Finding, Section, SourceType
-
-
-class _FakeMessage:
-    def __init__(self, content: str):
-        self.content = content
+from vendor_dd.engine.llm import LLMError, OpenAILLM
+from vendor_dd.engine.schemas import Citation, Dimension, Finding, Section, SourceType
 
 
-class _FakeChoice:
-    def __init__(self, content: str):
-        self.message = _FakeMessage(content)
+class _FakeResp:
+    def __init__(self, parsed, text="raw output", usage=None):
+        self.output_parsed = parsed
+        self.output_text = text
+        self.usage = usage
 
 
-class _FakeResponse:
-    def __init__(self, content: str):
-        self.choices = [_FakeChoice(content)]
+class _RecordingResponses:
+    def __init__(self, parsed):
+        self._parsed = parsed
+        self.calls: list[dict] = []
+
+    def parse(self, **kwargs):
+        self.calls.append(kwargs)
+        return _FakeResp(self._parsed)
 
 
 class _RecordingClient:
-    """Fake openai.OpenAI-shaped client recording the request, returning canned content."""
-
-    def __init__(self, content: dict):
-        self._content = content
-        self.calls: list[dict] = []
-        self.chat = self
+    """Fake openai client exposing the Responses API surface we use."""
+    def __init__(self, parsed):
+        self.responses = _RecordingResponses(parsed)
 
     @property
-    def completions(self):
-        return self
-
-    def create(self, **kwargs):
-        self.calls.append(kwargs)
-        return _FakeResponse(json.dumps(self._content))
+    def calls(self):
+        return self.responses.calls
 
 
-def test_structured_builds_strict_json_schema_and_parses_response():
-    fake_client = _RecordingClient({
-        "dimension": "legal", "findings": [], "reasoning": "clean", "score": 8,
-    })
-    llm = NebiusLLM(model="test-model", client=fake_client)
-    section = llm.structured("some prompt", Section)
+def test_structured_returns_parsed_object_and_forwards_schema():
+    section = Section(dimension=Dimension.LEGAL, findings=[], reasoning="clean", score=8)
+    client = _RecordingClient(section)
+    llm = OpenAILLM(model="test-model", client=client)
 
-    assert isinstance(section, Section)
-    assert section.dimension is Dimension.LEGAL
-    assert section.score == 8
+    out = llm.structured("some prompt", Section)
 
-    call = fake_client.calls[0]
+    assert out is section                       # responses.parse returns a parsed instance
+    call = client.calls[0]
     assert call["model"] == "test-model"
-    assert call["reasoning_effort"] == "none"
-    assert "tools" not in call and "tool_choice" not in call
-    rf = call["response_format"]
-    assert rf["type"] == "json_schema"
-    assert rf["json_schema"]["name"] == "Section"
-    assert rf["json_schema"]["strict"] is True
-    assert rf["json_schema"]["schema"]["additionalProperties"] is False
+    assert call["input"] == "some prompt"
+    assert call["text_format"] is Section       # native structured output, no manual schema
 
 
-def test_structured_coerces_literal_null_strings_in_response():
-    fake_client = _RecordingClient({
-        "name": "Acme", "domain": "acme.com", "country": "null", "industry": "steel",
-        "parent": "null", "is_public": False, "ticker": "null", "exchange": "null",
-    })
-    llm = NebiusLLM(model="test-model", client=fake_client)
-    entity = llm.structured("some prompt", EntityCard)
-
-    assert entity.name == "Acme"
-    assert entity.country is None
-    assert entity.parent is None
-    assert entity.ticker is None
-    assert entity.exchange is None
-
-
-def test_structured_with_nested_findings_round_trips():
-    fake_client = _RecordingClient({
-        "dimension": "legal",
-        "findings": [{"claim": "clean record", "citation": {
-            "url": "https://x.com", "title": "X", "source_type": "independent",
-            "score": 0.9, "as_of": None,
-        }}],
-        "reasoning": "ok", "score": 7,
-    })
-    llm = NebiusLLM(model="test-model", client=fake_client)
-    section = llm.structured("some prompt", Section)
-
-    assert section.findings == [Finding(
-        claim="clean record",
-        citation=Citation(url="https://x.com", title="X",
-                          source_type=SourceType.INDEPENDENT, score=0.9, as_of=None),
-    )]
-
-
-import json as _json
+def test_structured_round_trips_nested_findings():
+    section = Section(
+        dimension=Dimension.LEGAL, reasoning="ok", score=7,
+        findings=[Finding(claim="clean record", citation=Citation(
+            url="https://x.com", title="X", source_type=SourceType.INDEPENDENT,
+            score=0.9, as_of=None))],
+    )
+    llm = OpenAILLM(model="m", client=_RecordingClient(section))
+    out = llm.structured("p", Section)
+    assert out.findings[0].claim == "clean record"
+    assert out.findings[0].citation.source_type is SourceType.INDEPENDENT
 
 
 def test_structured_logs_request_and_response_without_secrets(tmp_path, monkeypatch):
     from vendor_dd.logs import configure_logging
-    monkeypatch.setenv("NEBIUS_API_KEY", "secret-key-xyz")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret-key-xyz")
     configure_logging(tmp_path, level="INFO")
 
-    fake_client = _RecordingClient({"dimension": "legal", "findings": [], "reasoning": "ok", "score": 8})
-    llm = NebiusLLM(model="test-model", client=fake_client, api_key="secret-key-xyz")
+    section = Section(dimension=Dimension.LEGAL, findings=[], reasoning="ok", score=8)
+    llm = OpenAILLM(model="test-model", client=_RecordingClient(section), api_key="secret-key-xyz")
     llm.structured("classify this", Section)
 
     lines = [_json.loads(l) for l in (tmp_path / "llm.log").read_text().splitlines() if l.strip()]
     events = [o["event"] for o in lines]
     assert "llm.request" in events and "llm.response" in events
-    blob = (tmp_path / "llm.log").read_text()
-    assert "secret-key-xyz" not in blob   # api key never logged
+    assert "secret-key-xyz" not in (tmp_path / "llm.log").read_text()   # api key never logged
     req = next(o for o in lines if o["event"] == "llm.request")
     assert req["payload"]["model"] == "test-model"
 
 
-import pytest
-
-
-class _BadClient:
-    def __init__(self, resp):
-        self._resp = resp
-        self.chat = self
-    @property
-    def completions(self):
-        return self
-    def create(self, **kwargs):
-        return self._resp
-
-
-def _resp(content):
-    msg = type("M", (), {"content": content})()
-    choice = type("C", (), {"message": msg})()
-    return type("R", (), {"choices": [choice]})()
-
-
-def test_none_content_raises_clear_llm_error():
-    llm = NebiusLLM(model="m", client=_BadClient(_resp(None)))
-    with pytest.raises(LLMError):
+def test_no_parsed_output_raises_clear_llm_error():
+    llm = OpenAILLM(model="m", client=_RecordingClient(None))
+    with pytest.raises(LLMError, match="no parsed output"):
         llm.structured("p", Section)
 
 
-def test_empty_choices_raises_clear_llm_error():
-    empty = type("R", (), {"choices": []})()
-    llm = NebiusLLM(model="m", client=_BadClient(empty))
-    with pytest.raises(LLMError):
-        llm.structured("p", Section)
-
-
-def test_malformed_json_raises_clear_llm_error():
-    llm = NebiusLLM(model="m", client=_BadClient(_resp("{not json")))
-    with pytest.raises(LLMError):
-        llm.structured("p", Section)
-
-
-class _TimeoutClient:
-    """A client whose create() hangs long enough to trip the SDK timeout."""
+class _RaisingClient:
     def __init__(self, exc):
+        self.responses = self
         self._exc = exc
-        self.chat = self
-    @property
-    def completions(self):
-        return self
-    def create(self, **kwargs):
+
+    def parse(self, **kwargs):
         raise self._exc
 
 
 def test_llm_timeout_becomes_llm_error():
-    from openai import APITimeoutError
-    import httpx
     exc = APITimeoutError(request=httpx.Request("POST", "http://x"))
-    llm = NebiusLLM(model="m", client=_TimeoutClient(exc))
+    llm = OpenAILLM(model="m", client=_RaisingClient(exc))
     with pytest.raises(LLMError, match="timed out"):
         llm.structured("p", Section)
 
 
 def test_llm_transport_error_becomes_llm_error():
-    from openai import APIError
-    import httpx
     exc = APIError("boom", request=httpx.Request("POST", "http://x"), body=None)
-    llm = NebiusLLM(model="m", client=_TimeoutClient(exc))
+    llm = OpenAILLM(model="m", client=_RaisingClient(exc))
     with pytest.raises(LLMError):
         llm.structured("p", Section)
