@@ -16,12 +16,12 @@ NEWS_SCORE_THRESHOLD = 0.0
 
 @dataclass(frozen=True)
 class DimensionConfig:
-    query_template: str        # "{name} {geo} lawsuit litigation" — geo filled at runtime
+    query_template: str        # "{name} lawsuit litigation" — {name} filled at runtime
     topic: str                 # "general" | "news" | "finance"
     search_depth: str          # "basic" | "advanced"
     max_results: int
     recency_days: int | None   # None = no time filter; else start_date = today - N days
-    use_country: bool          # country param (general topic only)
+    use_country: bool          # pass Tavily's country param (general topic only)
     exact_match: bool          # wrap canonical name in quotes
     include_own_domain: bool   # certs: self-reported is the answer
     exclude_own_domain: bool   # independent dims: force third-party sources
@@ -33,25 +33,25 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
         "{name} company overview headquarters industry", "general", "advanced",
         5, None, True, False, False, False),
     Dimension.LEGAL: DimensionConfig(
-        "{name} {geo} lawsuit litigation legal action", "general", "advanced",
+        "{name} lawsuit litigation legal action", "general", "advanced",
         5, 730, True, True, False, True),
     Dimension.SAFETY: DimensionConfig(
-        "{name} {geo} product recall safety defect investigation", "general", "advanced",
+        "{name} product recall safety defect investigation", "general", "advanced",
         5, 730, True, True, False, True),
     Dimension.FINANCIAL: DimensionConfig(
-        "{name} {geo} layoffs bankruptcy financial trouble downgrade", "finance", "advanced",
+        "{name} layoffs bankruptcy financial trouble downgrade", "finance", "advanced",
         6, 365, False, True, False, True),
     Dimension.BACKLOG: DimensionConfig(
-        "{name} {geo} backlog order book project pipeline", "finance", "advanced",
+        "{name} backlog order book project pipeline", "finance", "advanced",
         5, 365, False, True, False, False),
     Dimension.CERTIFICATIONS: DimensionConfig(
         "{name} ISO AISC certification compliance quality", "general", "basic",
         3, None, True, False, True, False),
     Dimension.NEWS_POSITIVE: DimensionConfig(
-        "{name} {geo} contract award partnership expansion", "news", "basic",
+        "{name} contract award partnership expansion", "news", "basic",
         8, 90, False, True, False, True, NEWS_SCORE_THRESHOLD),
     Dimension.NEWS_NEGATIVE: DimensionConfig(
-        "{name} {geo} controversy incident dispute closure", "news", "basic",
+        "{name} controversy incident dispute closure", "news", "basic",
         8, 90, False, True, False, True, NEWS_SCORE_THRESHOLD),
 }
 
