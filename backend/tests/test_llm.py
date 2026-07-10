@@ -2,7 +2,7 @@ import json
 
 from pydantic import BaseModel
 
-from vendor_dd.engine.llm import LLMError, NebiusLLM, _coerce_null_strings, _nullable_keys, _to_strict_schema
+from vendor_dd.engine.llm import LLMError, NebiusLLM, _coerce_null_strings, _to_strict_schema
 from vendor_dd.engine.schemas import Citation, Dimension, EntityCard, Finding, Section, SourceType
 
 
@@ -19,14 +19,6 @@ def test_to_strict_schema_recurses_into_defs_and_nested_lists():
     citation_def = schema["$defs"]["Citation"]
     assert citation_def["additionalProperties"] is False
     assert set(citation_def["required"]) == set(citation_def["properties"])
-
-
-def test_nullable_keys_finds_direct_and_ref_nullable_fields():
-    schema = EntityCard.model_json_schema()
-    keys = _nullable_keys(schema, schema.get("$defs", {}))
-    assert keys == {"domain", "country", "industry", "parent", "ticker", "exchange"}
-    assert "name" not in keys  # required str, not nullable
-    assert "is_public" not in keys  # bool, not nullable
 
 
 def test_coerce_null_strings_converts_literal_null_string_to_none():
@@ -194,3 +186,25 @@ def test_malformed_json_raises_clear_llm_error():
     llm = NebiusLLM(model="m", client=_BadClient(_resp("{not json")))
     with pytest.raises(LLMError):
         llm.structured("p", Section)
+
+
+def test_coerce_null_strings_recurses_into_nested_objects():
+    from vendor_dd.engine.llm import _coerce_null_strings
+    from vendor_dd.engine.schemas import Section
+    schema = Section.model_json_schema()
+    data = {"dimension": "legal", "reasoning": "x", "score": 5, "findings": [
+        {"claim": "c", "citation": {"url": "u", "title": "t", "source_type": "independent",
+                                    "score": 0.5, "as_of": "null"}}]}
+    out = _coerce_null_strings(data, schema)
+    assert out["findings"][0]["citation"]["as_of"] is None
+
+
+def test_coerce_null_strings_still_handles_top_level_nullable_fields():
+    from vendor_dd.engine.llm import _coerce_null_strings
+    from vendor_dd.engine.schemas import EntityCard
+    schema = EntityCard.model_json_schema()
+    data = {"name": "Acme", "domain": "acme.com", "country": "null", "industry": None,
+           "parent": None, "is_public": False, "ticker": "null", "exchange": None}
+    out = _coerce_null_strings(data, schema)
+    assert out["country"] is None
+    assert out["ticker"] is None
