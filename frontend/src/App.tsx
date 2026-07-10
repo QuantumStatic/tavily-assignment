@@ -15,6 +15,7 @@ type RowsAction =
   | { kind: 'upsert'; row: RowState }
   | { kind: 'remove'; vendorId: number }
   | { kind: 'event'; vendorId: number; ev: ReportStreamEvent }
+  | { kind: 'setReport'; vendorId: number; report: RowState['report']; entity: RowState['entity'] }
 
 function rowsReducer(state: RowState[], action: RowsAction): RowState[] {
   switch (action.kind) {
@@ -29,6 +30,9 @@ function rowsReducer(state: RowState[], action: RowsAction): RowState[] {
     case 'event':
       return state.map((r) =>
         r.vendorId === action.vendorId ? reduceEvent(r, action.ev) : r)
+    case 'setReport':
+      return state.map((r) => r.vendorId === action.vendorId
+        ? { ...r, report: action.report, entity: action.entity ?? r.entity } : r)
   }
 }
 
@@ -45,52 +49,94 @@ export default function App() {
     api.listProjects()
       .then((ps) => {
         setProjects(ps)
-        if (ps.length && activeId == null) setActiveId(ps[0].id)
+        setActiveId((cur) => (cur == null && ps.length ? ps[0].id : cur))
       })
       .catch(() => setError('Could not reach the API. Is the backend running?'))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // load the active project's vendor rows
   useEffect(() => {
     if (activeId == null) return
+    let cancelled = false
     setSelectedVendorId(null)
     api.getProject(activeId)
-      .then((detail) => dispatch({ kind: 'set', rows: detail.vendors.map(rowFromSummary) }))
-      .catch(() => setError('Could not load the project.'))
+      .then((detail) => {
+        if (cancelled) return
+        dispatch({ kind: 'set', rows: detail.vendors.map(rowFromSummary) })
+      })
+      .catch(() => { if (!cancelled) setError('Could not load the project.') })
+    return () => {
+      cancelled = true
+      // the outgoing project's rows are about to be replaced — close any streams
+      // still running for them so nobody keeps burning Tavily/Nebius credits.
+      streams.current.forEach((close) => close())
+      streams.current.clear()
+    }
   }, [activeId])
 
   // close all streams on unmount
   useEffect(() => () => { streams.current.forEach((close) => close()); streams.current.clear() }, [])
 
   async function createProject(name: string) {
-    const p = await api.createProject(name)
-    setProjects((ps) => [...ps, p])
-    setActiveId(p.id)
+    try {
+      const p = await api.createProject(name)
+      setProjects((ps) => [...ps, p])
+      setActiveId(p.id)
+    } catch {
+      setError('Could not create the project.')
+    }
   }
 
   async function addVendor(name: string) {
     if (activeId == null) return
-    const v = await api.addVendor(activeId, name)
-    const row = startStreaming(rowFromSummary({
-      vendor_id: v.id, name: v.name, vendor_key: v.vendor_key,
-      generated: false, verdict_score: null, verdict_reasoning: null, dimensions: [],
-    }))
-    dispatch({ kind: 'upsert', row })
-    const close = openReportStream(
-      v.id,
-      (ev) => dispatch({ kind: 'event', vendorId: v.id, ev }),
-      () => setError('The report stream dropped. Use ✕ and re-add the vendor to retry.'),
-    )
-    streams.current.set(v.id, close)
+    try {
+      const v = await api.addVendor(activeId, name)
+      const row = startStreaming(rowFromSummary({
+        vendor_id: v.id, name: v.name, vendor_key: v.vendor_key,
+        generated: false, verdict_score: null, verdict_reasoning: null, dimensions: [],
+      }))
+      dispatch({ kind: 'upsert', row })
+      const close = openReportStream(
+        v.id,
+        (ev) => dispatch({ kind: 'event', vendorId: v.id, ev }),
+        () => setError('The report stream dropped. Use ✕ and re-add the vendor to retry.'),
+      )
+      streams.current.set(v.id, close)
+    } catch {
+      setError('Could not add the vendor.')
+    }
   }
 
   async function removeVendor(vendorId: number) {
-    streams.current.get(vendorId)?.()
-    streams.current.delete(vendorId)
-    await api.deleteVendor(vendorId)
-    dispatch({ kind: 'remove', vendorId })
-    if (selectedVendorId === vendorId) setSelectedVendorId(null)
+    try {
+      streams.current.get(vendorId)?.()
+      streams.current.delete(vendorId)
+      await api.deleteVendor(vendorId)
+      dispatch({ kind: 'remove', vendorId })
+      if (selectedVendorId === vendorId) setSelectedVendorId(null)
+    } catch {
+      setError('Could not delete the vendor.')
+    }
+  }
+
+  async function selectVendor(vendorId: number) {
+    setSelectedVendorId(vendorId)
+    const row = rows.find((r) => r.vendorId === vendorId)
+    if (!row || row.status !== 'done' || row.report) return
+    try {
+      const fetched = await api.getReport(vendorId)
+      if (fetched.verdict_score == null || fetched.verdict_reasoning == null || fetched.entity == null) return
+      const report = {
+        vendor_input: row.name,
+        entity: fetched.entity,
+        sections: fetched.sections,
+        verdict_score: fetched.verdict_score,
+        verdict_reasoning: fetched.verdict_reasoning,
+      }
+      dispatch({ kind: 'setReport', vendorId, report, entity: fetched.entity })
+    } catch {
+      setError('Could not load the report.')
+    }
   }
 
   const activeProject = projects.find((p) => p.id === activeId) ?? null
@@ -113,7 +159,7 @@ export default function App() {
               <h3>Vendors</h3>
               <AddVendorForm onAdd={addVendor} />
             </div>
-            <VendorTable rows={sortedRows} onSelect={setSelectedVendorId} onDelete={removeVendor} />
+            <VendorTable rows={sortedRows} onSelect={selectVendor} onDelete={removeVendor} />
           </>
         ) : (
           <p className="empty">Create a project to begin.</p>

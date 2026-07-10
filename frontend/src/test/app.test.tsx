@@ -4,20 +4,47 @@ import userEvent from '@testing-library/user-event'
 import App from '../App'
 import { FakeEventSource } from './fakeEventSource'
 
-function mockApi() {
+type MockApiOptions = {
+  projects?: { id: number; name: string; created_at: string }[]
+  projectDetails?: Record<number, { id: number; name: string; created_at: string; vendors: unknown[] }>
+  vendorReports?: Record<number, unknown>
+  deleteVendor?: (id: number) => { ok: boolean; status?: number; json: () => Promise<unknown> }
+}
+
+function mockApi(opts: MockApiOptions = {}) {
   const project = { id: 1, name: 'Bridge job', created_at: 't' }
-  const detail = { id: 1, name: 'Bridge job', created_at: 't', vendors: [] as unknown[] }
+  const projects = opts.projects ?? [project]
+  const defaultDetail = { id: 1, name: 'Bridge job', created_at: 't', vendors: [] as unknown[] }
+  const projectDetails = opts.projectDetails ?? { 1: defaultDetail }
+  const vendorReports = opts.vendorReports ?? {}
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
     const method = init?.method ?? 'GET'
     if (u.endsWith('/projects') && method === 'GET')
-      return { ok: true, json: async () => [project] }
+      return { ok: true, json: async () => projects }
     if (u.endsWith('/projects') && method === 'POST')
       return { ok: true, json: async () => project }
-    if (u.match(/\/projects\/1$/))
-      return { ok: true, json: async () => detail }
-    if (u.match(/\/projects\/1\/vendors$/) && method === 'POST')
-      return { ok: true, json: async () => ({ id: 5, project_id: 1, name: 'Cives Steel', vendor_key: null, created_at: 't' }) }
+    const projectMatch = u.match(/\/projects\/(\d+)$/)
+    if (projectMatch && method === 'GET') {
+      const id = Number(projectMatch[1])
+      const detail = projectDetails[id]
+      if (detail) return { ok: true, json: async () => detail }
+    }
+    const addVendorMatch = u.match(/\/projects\/(\d+)\/vendors$/)
+    if (addVendorMatch && method === 'POST')
+      return { ok: true, json: async () => ({ id: 5, project_id: Number(addVendorMatch[1]), name: 'Cives Steel', vendor_key: null, created_at: 't' }) }
+    const reportMatch = u.match(/\/vendors\/(\d+)\/report$/)
+    if (reportMatch && method === 'GET') {
+      const id = Number(reportMatch[1])
+      const report = vendorReports[id]
+      if (report) return { ok: true, json: async () => report }
+    }
+    const deleteMatch = u.match(/\/vendors\/(\d+)$/)
+    if (deleteMatch && method === 'DELETE') {
+      const id = Number(deleteMatch[1])
+      if (opts.deleteVendor) return opts.deleteVendor(id)
+      return { ok: true, json: async () => ({}) }
+    }
     return { ok: true, json: async () => ({}) }
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -63,4 +90,85 @@ test('add a vendor, watch cells stream in, open the report panel', async () => {
   await userEvent.click(row)
   await screen.findByText('No litigation.')
   expect(screen.getByRole('link', { name: /X/ })).toHaveAttribute('href', 'https://x.com')
+})
+
+test('selecting an already-generated vendor fetches its report from the REST endpoint', async () => {
+  const projects = [
+    { id: 1, name: 'Bridge job', created_at: 't' },
+    { id: 2, name: 'Tunnel job', created_at: 't' },
+  ]
+  const projectDetails = {
+    1: {
+      id: 1, name: 'Bridge job', created_at: 't',
+      vendors: [{
+        vendor_id: 9, name: 'Cives Steel', vendor_key: 'cives-steel', generated: true,
+        verdict_score: 7, verdict_reasoning: 'Solid.',
+        dimensions: [{ dimension: 'legal', score: 8, as_of: '2026-06' }],
+      }],
+    },
+    2: { id: 2, name: 'Tunnel job', created_at: 't', vendors: [] },
+  }
+  const vendorReports = {
+    9: {
+      generated: true, vendor_key: 'cives-steel',
+      entity: { name: 'Cives Steel', domain: 'cives.com', country: null, industry: null, parent: null, is_public: false, ticker: null, exchange: null },
+      verdict_score: 7, verdict_reasoning: 'Solid.',
+      sections: [{ dimension: 'legal', score: 8, reasoning: 'clean',
+                   findings: [{ claim: 'No litigation.', citation: { url: 'https://x.com', title: 'X', source_type: 'independent', score: 0.9, as_of: '2026-06' } }] }],
+    },
+  }
+  const { fetchMock } = mockApi({ projects, projectDetails, vendorReports })
+  render(<App />)
+
+  const row = await screen.findByText('Cives Steel')
+  await userEvent.click(row)
+
+  await screen.findByText('No litigation.')
+  expect(fetchMock.mock.calls.some(([u]) => String(u).match(/\/vendors\/9\/report$/))).toBe(true)
+})
+
+test('switching the active project closes the previous project\'s open streams', async () => {
+  const projects = [
+    { id: 1, name: 'Bridge job', created_at: 't' },
+    { id: 2, name: 'Tunnel job', created_at: 't' },
+  ]
+  const projectDetails = {
+    1: { id: 1, name: 'Bridge job', created_at: 't', vendors: [] },
+    2: { id: 2, name: 'Tunnel job', created_at: 't', vendors: [] },
+  }
+  mockApi({ projects, projectDetails })
+  render(<App />)
+
+  await screen.findByText('Bridge job')
+
+  await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
+  await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
+  await screen.findByText('Cives Steel')
+
+  const es = await waitFor(() => {
+    const e = FakeEventSource.last()
+    if (!e) throw new Error('no stream yet')
+    return e
+  })
+  expect(es.closed).toBe(false)
+
+  await userEvent.click(screen.getByText('Tunnel job'))
+  await waitFor(() => expect(es.closed).toBe(true))
+})
+
+test('a failed vendor deletion surfaces an error and keeps the row', async () => {
+  mockApi({
+    deleteVendor: () => ({ ok: false, status: 500, json: async () => ({}) }),
+  })
+  render(<App />)
+
+  await screen.findByText('Bridge job')
+  await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
+  await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
+  await screen.findByText('Cives Steel')
+
+  await userEvent.click(screen.getByRole('button', { name: /delete vendor/i }))
+
+  await waitFor(() => expect(document.querySelector('.error-banner')).not.toBeNull())
+  expect(screen.getByText('Cives Steel')).toBeInTheDocument()
 })
