@@ -33,3 +33,13 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 .add-vendor { display: flex; gap: 8px; }
 .add-vendor input { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
 .add-vendor button { padding: 6px 14px; border: 1px solid #b9d0ff; background: #e0ecff; border-radius: 6px; cursor: pointer; font-size: 13px; }
+
+.panel { width: 360px; min-width: 360px; border-left: 1px solid #e5e5e5; padding: 16px; overflow-y: auto; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.verdict-reason { font-size: 13px; }
+.report-section { border-top: 1px solid #eee; padding-top: 8px; margin-top: 8px; }
+.report-section h5 { margin: 0 0 4px; font-size: 13px; }
+.muted { color: #888; font-size: 12px; }
+.finding { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; font-size: 12px; }
+.finding a { color: #2563eb; text-decoration: none; }
+.cite-meta { color: #aaa; font-size: 11px; }
