@@ -39,9 +39,10 @@ def build_app() -> FastAPI:
     from vendor_dd.engine.backlog import fetch_transcript_text
     from vendor_dd.engine.llm import NebiusLLM
     from vendor_dd.engine.tavily_client import TavilySearchClient
-    from vendor_dd.logs import configure_logging
+    from vendor_dd.logs import configure_logging, get_logger
 
     configure_logging()
+    get_logger("general").info("app.startup", extra={"payload": {}})
 
     # app.py is backend/src/vendor_dd/surfaces/api/app.py, so parents[5] == project root
     # (where .env lives, one level above backend/).

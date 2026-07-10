@@ -42,6 +42,10 @@ def main(vendor: str) -> None:
         today=date.today(),
         fetch_transcript=fetch_transcript_text,
     )
+    from vendor_dd.logs import configure_logging, get_logger, set_correlation_id
+    configure_logging()
+    set_correlation_id(uuid.uuid4().hex)
+    get_logger("general").info("cli.run", extra={"payload": {"vendor": vendor}})
     # One session_id per CLI run groups this invocation's ~8 Tavily searches together.
     engine = ReportEngine(deps, mode="parallel", session_id=uuid.uuid4().hex)
 
