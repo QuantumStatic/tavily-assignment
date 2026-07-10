@@ -4,7 +4,10 @@ import { VendorRow } from './VendorRow'
 
 function HelpBadge({ text }: { text: string }) {
   return (
-    <span className="col-help" tabIndex={0} role="img" title={text} aria-label={text}>?</span>
+    <span className="col-help" tabIndex={0} role="img" aria-label={text}>
+      ?
+      <span className="col-tip" aria-hidden="true">{text}</span>
+    </span>
   )
 }
 
