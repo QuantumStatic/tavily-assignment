@@ -67,7 +67,10 @@ def get_project(project_id: int, request: Request):
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
     cache = _cache(request)
-    vendors = [_summarize(v, cache) for v in store.list_vendors(project_id)]
+    try:
+        vendors = [_summarize(v, cache) for v in store.list_vendors(project_id)]
+    finally:
+        cache.close()
     return ProjectDetail(id=project.id, name=project.name, created_at=project.created_at,
                          vendors=vendors)
 
@@ -98,14 +101,17 @@ def get_report(vendor_id: int, request: Request):
     if vendor is None:
         raise HTTPException(status_code=404, detail="vendor not found")
     cache = _cache(request)
-    parsed = _report_sections(cache, vendor.vendor_key) if vendor.vendor_key else {}
-    if not parsed:
-        return VendorReport(generated=False, vendor_key=vendor.vendor_key, entity=None,
-                            verdict_score=None, verdict_reasoning=None, sections=[])
-    sections = [sec for sec, _ in parsed.values()]
-    score, reasoning = assemble_verdict(sections)
-    entity_raw = cache.get(vendor.name.strip().lower(), Dimension.SNAPSHOT)
-    entity = EntityCard.model_validate(entity_raw) if entity_raw else None
+    try:
+        parsed = _report_sections(cache, vendor.vendor_key) if vendor.vendor_key else {}
+        if not parsed:
+            return VendorReport(generated=False, vendor_key=vendor.vendor_key, entity=None,
+                                verdict_score=None, verdict_reasoning=None, sections=[])
+        sections = [sec for sec, _ in parsed.values()]
+        score, reasoning = assemble_verdict(sections)
+        entity_raw = cache.get(vendor.name.strip().lower(), Dimension.SNAPSHOT)
+        entity = EntityCard.model_validate(entity_raw) if entity_raw else None
+    finally:
+        cache.close()
     return VendorReport(generated=True, vendor_key=vendor.vendor_key, entity=entity,
                         verdict_score=score, verdict_reasoning=reasoning, sections=sections)
 
