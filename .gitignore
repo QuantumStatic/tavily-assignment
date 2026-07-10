@@ -18,6 +18,9 @@ venv/
 *.sqlite3
 .cache/
 
+# Structured logs (Phase 4)
+logs/
+
 # Node / frontend
 node_modules/
 dist/
