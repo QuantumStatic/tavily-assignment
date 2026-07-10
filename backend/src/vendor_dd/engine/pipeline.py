@@ -10,7 +10,7 @@ from vendor_dd.engine.backlog import build_quote_url
 from vendor_dd.engine.cache import SQLiteCache
 from vendor_dd.engine.entity import resolve_entity
 from vendor_dd.engine.events import (
-    EntityResolved, ReportComplete, ReportEvent, SectionComplete, SectionError,
+    EntityResolved, ReportComplete, ReportError, ReportEvent, SectionComplete, SectionError,
 )
 from vendor_dd.engine.llm import LLMClient
 from vendor_dd.engine.retrieval import retrieve_dimension
@@ -68,7 +68,11 @@ class ReportEngine:
         deps = self._deps
         Path(deps.cache_path).parent.mkdir(parents=True, exist_ok=True)
         cache = SQLiteCache(deps.cache_path)
-        entity = self._resolve_entity_cached(vendor, cache)
+        try:
+            entity = self._resolve_entity_cached(vendor, cache)
+        except Exception as exc:  # fatal: no entity to build a report around
+            yield ReportError(message=str(exc))
+            return
         yield EntityResolved(entity=entity)
 
         vendor_key = (entity.domain or entity.name).strip().lower()
@@ -100,8 +104,12 @@ class ReportEngine:
                 sections.append(outcome.section)
                 yield SectionComplete(section=outcome.section, cached=False)
 
-        backlog, backlog_cached = self._backlog_section(entity, cache, vendor_key,
-                                                         news_positive_results)
+        try:
+            backlog, backlog_cached = self._backlog_section(entity, cache, vendor_key,
+                                                             news_positive_results)
+        except Exception as exc:  # fatal: report would be incomplete without backlog
+            yield ReportError(message=str(exc))
+            return
         sections.append(backlog)
         yield SectionComplete(section=backlog, cached=backlog_cached)
 
