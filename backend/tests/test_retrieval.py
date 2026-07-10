@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from vendor_dd.engine.schemas import Dimension, EntityCard
 from vendor_dd.engine.tavily_client import build_search_kwargs
 from vendor_dd.engine.retrieval import retrieve_dimension
@@ -20,12 +20,13 @@ def test_legal_kwargs_use_country_and_exclude_own_domain():
     assert "country" in kw
 
 
-def test_news_kwargs_use_general_topic_with_news_keyword_90d_window():
+def test_news_kwargs_use_general_topic_with_news_keyword_120d_window():
     kw = build_search_kwargs(Dimension.NEWS, _entity(), today=date(2026, 7, 8))
     assert kw["topic"] == "general"                   # news topic returns broad noise
     assert kw["query"].endswith("news")               # "{name} news"
     assert "country" not in kw                        # use_country stays off for news
-    assert kw["start_date"] == "2026-04-09"           # today - 90 days
+    assert "exclude_domains" not in kw                # own press releases are news too
+    assert kw["start_date"] == (date(2026, 7, 8) - timedelta(days=120)).isoformat()
 
 
 def test_country_is_not_injected_into_query_text():

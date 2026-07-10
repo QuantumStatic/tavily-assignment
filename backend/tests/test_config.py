@@ -9,12 +9,13 @@ def test_every_dimension_has_config():
         assert isinstance(DIMENSION_CONFIGS[dim], DimensionConfig)
 
 
-def test_news_uses_general_topic_with_a_news_keyword_and_90d_window():
+def test_news_uses_general_topic_with_a_news_keyword_and_120d_window():
     # NOT the news topic — it returns recency-broad noise for low-coverage vendors.
     cfg = DIMENSION_CONFIGS[Dimension.NEWS]
     assert cfg.topic == "general"
     assert cfg.query_template == "{name} news"
-    assert cfg.recency_days == 90
+    assert cfg.recency_days == 120
+    assert cfg.exclude_own_domain is False   # a vendor's own press releases are news too
 
 
 def test_finance_dimension_drops_keyword_stuffing():
