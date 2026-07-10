@@ -104,6 +104,31 @@ def test_stream_endpoint_emits_full_event_sequence(tmp_path):
     assert client.get(f"/projects/{pid}").json()["vendors"][0]["generated"] is True
 
 
+def test_report_completes_and_caches_even_if_client_disconnects_early(tmp_path):
+    """Generation is decoupled from the SSE stream: if the client stops listening
+    (e.g. switches projects) the work keeps running and the report still ends up fully
+    cached — coming back shows it complete, not stuck partial."""
+    import time
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    # open the stream but bail out after the first line (simulates a disconnect)
+    with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+        for _ in resp.iter_lines():
+            break
+
+    # the background thread keeps going; poll until the report is fully generated
+    report = {}
+    for _ in range(100):
+        report = client.get(f"/vendors/{vid}/report").json()
+        if report.get("generated"):
+            break
+        time.sleep(0.02)
+    assert report["generated"] is True
+    assert len(report["sections"]) == 6           # all sections cached despite the disconnect
+
+
 def test_stream_missing_vendor_returns_404(tmp_path):
     client = _client(tmp_path)
     resp = client.get("/vendors/9999/report/stream")
