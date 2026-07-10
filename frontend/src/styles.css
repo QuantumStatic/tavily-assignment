@@ -51,8 +51,12 @@ body {
 }
 
 .table-scroll { overflow-x: auto; }
-.vendor-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.vendor-table th, .vendor-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); transition: border-color .2s ease; }
+.vendor-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.vendor-table th, .vendor-table td { text-align: center; padding: 8px 10px; border-bottom: 1px solid var(--border); transition: border-color .2s ease; }
+/* vendor name column is wider and left-aligned; the actions column is narrow;
+   verdict + dimension columns evenly share the rest (table-layout: fixed). */
+.vendor-table th:first-child, .vendor-table td:first-child { text-align: left; width: 200px; }
+.vendor-table th:last-child, .vendor-table td:last-child { width: 48px; }
 .vendor-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); position: sticky; top: 0; background: var(--bg); }
 .vendor-row { cursor: pointer; }
 .vendor-row:hover { background: var(--hover); }
@@ -102,14 +106,16 @@ body {
 .add-vendor button:hover { opacity: .9; }
 .add-vendor button:disabled { opacity: .5; cursor: not-allowed; }
 
-.panel { position: relative; flex-shrink: 0; border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; transition: background .2s ease, border-color .2s ease; }
+.panel { position: relative; flex-shrink: 0; border-left: 1px solid var(--border); display: flex; flex-direction: column; transition: background .2s ease, border-color .2s ease; }
+.panel-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; }
 .panel-resize-handle {
   position: absolute; top: 0; left: -3px; bottom: 0; width: 6px;
   cursor: col-resize; touch-action: none;
 }
 .panel-resize-handle:hover, .panel-resize-handle:focus-visible { background: var(--accent); opacity: .5; }
 .panel-resize-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+/* sticky header: stays put with the company name + close button while the body scrolls */
+.panel-head { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
 .verdict-reason { font-size: 13px; }
 .report-section { border-top: 1px solid var(--border-soft); padding-top: 8px; margin-top: 8px; }
 .report-section h5 { margin: 0 0 4px; font-size: 13px; }
