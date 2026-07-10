@@ -19,3 +19,14 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 .link-btn { border: none; background: none; cursor: pointer; color: #999; font-size: 12px; }
 .link-btn:hover { color: #dc2626; }
 .empty { color: #888; padding: 24px; }
+
+.sidebar { width: 220px; min-width: 220px; background: #fafafa; border-right: 1px solid #e5e5e5; padding: 12px; }
+.sidebar h4 { margin: 0 0 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #999; }
+.project-list { list-style: none; margin: 0; padding: 0; }
+.project-list li { padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+.project-list li:hover { background: #eee; }
+.project-list li.active { background: #e0ecff; font-weight: 600; }
+.project-list li:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; }
+.new-project { margin-top: 12px; }
+.new-project input { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
