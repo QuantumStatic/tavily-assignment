@@ -6,7 +6,7 @@ red flags, delivery & quality track record, recent news, and an overall risk
 summary. Every field carries a source URL and an "as of" date.
 
 Powered by [Tavily](https://tavily.com) search/extract for retrieval, with a
-per-section TTL cache, an evaluation loop, and tracing.
+per-section TTL cache. Eval loop and tracing planned (see Roadmap).
 
 > Status: backend complete (engine + CLI + FastAPI/SSE API, 70 tests) and a React frontend
 > (projects, live streaming comparison table, cited report panel, 36 tests). Runs end-to-end
@@ -18,7 +18,7 @@ per-section TTL cache, an evaluation loop, and tracing.
 backend/          FastAPI + engine (Python)
   src/vendor_dd/
     engine/       surface-agnostic core: retrieval, cache, synthesis, schemas
-    surfaces/     thin adapters: cli, api (SSE), mcp server
+    surfaces/     thin adapters: cli, api (SSE); mcp server (Phase 6, planned)
   spikes/         feasibility probes (run these first)
   tests/
 frontend/         React + Vite + TS — sidebar + live comparison table + report panel
