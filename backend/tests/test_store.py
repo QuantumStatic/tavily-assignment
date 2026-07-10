@@ -32,3 +32,21 @@ def test_set_vendor_key_backfill(tmp_path):
     v = store.add_vendor(p.id, "Cives Steel")
     store.set_vendor_key(v.id, "cives.com")
     assert store.get_vendor(v.id).vendor_key == "cives.com"
+
+
+def test_create_project_persists_session_id(tmp_path):
+    store = Store(tmp_path / "db.sqlite",
+                  clock=lambda: "2026-07-10T00:00:00+00:00",
+                  id_gen=lambda: "sess-abc")
+    p = store.create_project("Bridge job")
+    assert p.session_id == "sess-abc"
+    assert store.get_project(p.id).session_id == "sess-abc"
+    assert store.list_projects()[0].session_id == "sess-abc"
+
+
+def test_session_id_defaults_to_uuid_when_no_id_gen(tmp_path):
+    store = Store(tmp_path / "db.sqlite")           # real uuid id_gen
+    a = store.create_project("A")
+    b = store.create_project("B")
+    assert a.session_id and b.session_id and a.session_id != b.session_id
+    assert len(a.session_id) >= 16                  # uuid4 hex is 32 chars
