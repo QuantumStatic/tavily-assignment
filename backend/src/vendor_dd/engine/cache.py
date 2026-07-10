@@ -23,6 +23,8 @@ class SQLiteCache:
     def __init__(self, path: str | Path, clock: Callable[[], datetime] = _utcnow):
         self._clock = clock
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._exec(
             """CREATE TABLE IF NOT EXISTS report_cache (
                  vendor_key TEXT NOT NULL,

@@ -81,3 +81,11 @@ def test_cache_logs_sql_queries(tmp_path):
     cache.put("acme.com", Dimension.LEGAL, {"score": 5})
     lines = [json.loads(l) for l in (tmp_path / "logs" / "db.log").read_text().splitlines() if l.strip()]
     assert any(o["event"] == "db.query" and "report_cache" in o["payload"]["sql"] for o in lines)
+
+
+def test_cache_enables_wal_and_busy_timeout(tmp_path):
+    cache = SQLiteCache(tmp_path / "c.db", clock=_now)
+    mode = cache._conn.execute("PRAGMA journal_mode").fetchone()[0]
+    timeout = cache._conn.execute("PRAGMA busy_timeout").fetchone()[0]
+    assert mode.lower() == "wal"
+    assert timeout >= 3000

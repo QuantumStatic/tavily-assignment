@@ -45,6 +45,8 @@ class Store:
         self._clock = clock
         self._id_gen = id_gen
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._exec(
             """CREATE TABLE IF NOT EXISTS projects (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
