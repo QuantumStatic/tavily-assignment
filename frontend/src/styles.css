@@ -43,3 +43,9 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 .finding { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; font-size: 12px; }
 .finding a { color: #2563eb; text-decoration: none; }
 .cite-meta { color: #aaa; font-size: 11px; }
+
+.app { display: flex; height: 100vh; }
+.main { flex: 1; padding: 16px 20px; overflow-y: auto; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 16px; }
+.toolbar h3 { margin: 0; }
+.error-banner { background: #fee2e2; color: #991b1b; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; cursor: pointer; font-size: 13px; }
