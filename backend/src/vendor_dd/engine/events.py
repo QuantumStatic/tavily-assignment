@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from vendor_dd.engine.schemas import Dimension, EntityCard, Report, Section
 
@@ -34,6 +34,7 @@ class ReportError(BaseModel):
     message: str
 
 
-ReportEvent = Union[
-    EntityResolved, SectionComplete, SectionError, ReportComplete, ReportError,
+ReportEvent = Annotated[
+    Union[EntityResolved, SectionComplete, SectionError, ReportComplete, ReportError],
+    Field(discriminator="type"),
 ]
