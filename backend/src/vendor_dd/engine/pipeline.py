@@ -41,6 +41,21 @@ def _normalize_name(name: str) -> str:
     return name.strip().lower()
 
 
+class _SessionSearch:
+    """Wraps a SearchClient to stamp run-level tracing headers (Tavily X-Session-Id /
+    X-Client-Name) onto every search. Transparent: setdefault never overrides an explicit
+    kwarg, and a call site that passes nothing extra behaves exactly as the inner client."""
+
+    def __init__(self, inner: SearchClient, session_id: str):
+        self._inner = inner
+        self._session_id = session_id
+
+    def search(self, **kwargs):
+        kwargs.setdefault("session_id", self._session_id)
+        kwargs.setdefault("client_name", "vendor-dd")
+        return self._inner.search(**kwargs)
+
+
 class ReportEngine:
     """Runs a due-diligence report. `mode` selects concurrency; the algorithm is identical.
 
@@ -52,9 +67,11 @@ class ReportEngine:
     """
 
     def __init__(self, deps: Deps, *, mode: Literal["parallel", "sequential"] = "parallel",
-                 max_workers: int = 6):
+                 max_workers: int = 6, session_id: str | None = None):
         self._deps = deps
         self._max_workers = 1 if mode == "sequential" else max_workers
+        self._search: SearchClient = (
+            _SessionSearch(deps.search, session_id) if session_id else deps.search)
 
     def run_report(self, vendor: str) -> Report:
         report: Report | None = None
@@ -124,7 +141,7 @@ class ReportEngine:
     # --- worker: NO database access ---
     def _compute_section(self, dim: Dimension, entity: EntityCard) -> DimensionOutcome:
         deps = self._deps
-        results = retrieve_dimension(dim, entity, search=deps.search, today=deps.today)
+        results = retrieve_dimension(dim, entity, search=self._search, today=deps.today)
         section = synthesize_section(dim, results, llm=deps.llm)
         return DimensionOutcome(section=section, raw_results=results)
 
@@ -139,7 +156,7 @@ class ReportEngine:
         cached = cache.get(name_key, Dimension.SNAPSHOT)
         if cached is not None:
             return EntityCard.model_validate(cached)
-        entity = resolve_entity(vendor, search=deps.search, llm=deps.llm)
+        entity = resolve_entity(vendor, search=self._search, llm=deps.llm)
         cache.put(name_key, Dimension.SNAPSHOT, entity.model_dump(mode="json"))
         return entity
 
@@ -168,7 +185,7 @@ class ReportEngine:
                 # results to reuse. This is a rarer path (news has a 1-day TTL, so it's
                 # usually stale/refetched), so falling back to a live call here is acceptable.
                 results = retrieve_dimension(Dimension.NEWS_POSITIVE, entity,
-                                             search=deps.search, today=deps.today)
+                                             search=self._search, today=deps.today)
         section = synthesize_section(Dimension.BACKLOG, results, llm=deps.llm)
         cache.put(vendor_key, Dimension.BACKLOG, section.model_dump(mode="json"), sources=results)
         return section, False
