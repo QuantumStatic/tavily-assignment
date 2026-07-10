@@ -186,6 +186,28 @@ test('switching the active project closes the previous project\'s open streams',
   await waitFor(() => expect(es.closed).toBe(true))
 })
 
+test('a successful vendor deletion closes its stream and removes the row', async () => {
+  mockApi()
+  render(<App />)
+
+  await screen.findByRole('heading', { name: 'Bridge job' })
+  await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
+  await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
+  await screen.findByText('Cives Steel')
+
+  const es = await waitFor(() => {
+    const e = FakeEventSource.last()
+    if (!e) throw new Error('no stream yet')
+    return e
+  })
+  expect(es.closed).toBe(false)
+
+  await userEvent.click(screen.getByRole('button', { name: /delete vendor/i }))
+
+  await waitFor(() => expect(screen.queryByText('Cives Steel')).not.toBeInTheDocument())
+  expect(es.closed).toBe(true)
+})
+
 test('a failed vendor deletion surfaces an error and keeps the row', async () => {
   mockApi({
     deleteVendor: () => ({ ok: false, status: 500, json: async () => ({}) }),
@@ -197,10 +219,18 @@ test('a failed vendor deletion surfaces an error and keeps the row', async () =>
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
   await screen.findByText('Cives Steel')
 
+  const es = await waitFor(() => {
+    const e = FakeEventSource.last()
+    if (!e) throw new Error('no stream yet')
+    return e
+  })
+  expect(es.closed).toBe(false)
+
   await userEvent.click(screen.getByRole('button', { name: /delete vendor/i }))
 
   await waitFor(() => expect(document.querySelector('.error-banner')).not.toBeNull())
   expect(screen.getByText('Cives Steel')).toBeInTheDocument()
+  expect(es.closed).toBe(false)
 })
 
 test('a vendor add that resolves after switching projects does not appear in the new project', async () => {

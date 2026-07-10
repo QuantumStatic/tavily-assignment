@@ -121,9 +121,9 @@ export default function App() {
 
   async function removeVendor(vendorId: number) {
     try {
+      await api.deleteVendor(vendorId)
       streams.current.get(vendorId)?.()
       streams.current.delete(vendorId)
-      await api.deleteVendor(vendorId)
       dispatch({ kind: 'remove', vendorId })
       if (selectedVendorId === vendorId) setSelectedVendorId(null)
     } catch {
