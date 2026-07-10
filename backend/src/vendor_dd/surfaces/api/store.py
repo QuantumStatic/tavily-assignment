@@ -50,10 +50,9 @@ class Store:
                )"""
         )
         # Migrate a DB created before session_id existed (Phase 2). No-op on fresh DBs.
-        try:
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(projects)").fetchall()}
+        if "session_id" not in cols:
             self._conn.execute("ALTER TABLE projects ADD COLUMN session_id TEXT")
-        except sqlite3.OperationalError:
-            pass  # column already present
         self._conn.execute(
             """CREATE TABLE IF NOT EXISTS vendors (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
