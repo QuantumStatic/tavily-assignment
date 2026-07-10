@@ -36,10 +36,12 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
         "general", "basic", 10, 730, True, True),
     # Own domain NOT excluded: financial figures are self-reported by nature — the
     # vendor's own audited report / IR page is the primary source of revenue/capex.
+    # No recency window: Tavily's start_date zeroed out results (undated pages, and
+    # the latest annual report is often >1yr old). The latest figures matter regardless.
     Dimension.FINANCIAL: DimensionConfig(
         ("{name} revenue", "{name} financial results", "{name} debt funding",
          "{name} profit"),
-        "general", "basic", 10, 365, False, False),
+        "general", "basic", 10, None, False, False),
     Dimension.BACKLOG: DimensionConfig(
         ("{name} order backlog project pipeline",), "finance", "basic",
         10, 365, False, False),
