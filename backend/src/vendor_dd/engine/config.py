@@ -46,9 +46,12 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
         "general", "basic", 10, None, True, False),
     # Replaces the old news topic (which returned recency-broad noise). general topic
     # + focused queries; own domain included so the vendor's press releases count.
+    # NO recency window: Tavily's start_date silently drops any result it can't date,
+    # which for some vendors (e.g. Indian news sites) is ALL of them -> zero news.
+    # Citations carry as_of dates where known, so recency info isn't lost.
     Dimension.NEWS: DimensionConfig(
         ("{name} news", "{name} contract award", "{name} expansion", "{name} controversy"),
-        "general", "basic", 10, 120, False, False),
+        "general", "basic", 10, None, False, False),
 }
 
 # TTL policy lives in code, not in the cache row (tunable without migration).
