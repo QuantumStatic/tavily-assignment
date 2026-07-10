@@ -69,54 +69,57 @@ class ReportEngine:
         Path(deps.cache_path).parent.mkdir(parents=True, exist_ok=True)
         cache = SQLiteCache(deps.cache_path)
         try:
-            entity = self._resolve_entity_cached(vendor, cache)
-        except Exception as exc:  # fatal: no entity to build a report around
-            yield ReportError(message=str(exc))
-            return
-        yield EntityResolved(entity=entity)
+            try:
+                entity = self._resolve_entity_cached(vendor, cache)
+            except Exception as exc:  # fatal: no entity to build a report around
+                yield ReportError(message=str(exc))
+                return
+            yield EntityResolved(entity=entity)
 
-        vendor_key = (entity.domain or entity.name).strip().lower()
-        sections: list[Section] = []
-        news_positive_results: list[dict] | None = None
+            vendor_key = (entity.domain or entity.name).strip().lower()
+            sections: list[Section] = []
+            news_positive_results: list[dict] | None = None
 
-        with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-            pending: dict = {}
-            for dim in _TAVILY_DIMS:
-                cached = cache.get(vendor_key, dim)
-                if cached is not None:
-                    section = Section.model_validate(cached)
-                    sections.append(section)
-                    yield SectionComplete(section=section, cached=True)
-                    continue
-                pending[pool.submit(self._compute_section, dim, entity)] = dim
+            with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
+                pending: dict = {}
+                for dim in _TAVILY_DIMS:
+                    cached = cache.get(vendor_key, dim)
+                    if cached is not None:
+                        section = Section.model_validate(cached)
+                        sections.append(section)
+                        yield SectionComplete(section=section, cached=True)
+                        continue
+                    pending[pool.submit(self._compute_section, dim, entity)] = dim
 
-            for fut in as_completed(pending):
-                dim = pending[fut]
-                try:
-                    outcome = fut.result()
-                except Exception as exc:  # one dimension failed; the report goes on without it
-                    yield SectionError(dimension=dim, message=str(exc))
-                    continue
-                cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
-                          sources=outcome.raw_results)
-                if dim is Dimension.NEWS_POSITIVE:
-                    news_positive_results = outcome.raw_results
-                sections.append(outcome.section)
-                yield SectionComplete(section=outcome.section, cached=False)
+                for fut in as_completed(pending):
+                    dim = pending[fut]
+                    try:
+                        outcome = fut.result()
+                    except Exception as exc:  # one dimension failed; the report goes on without it
+                        yield SectionError(dimension=dim, message=str(exc))
+                        continue
+                    cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
+                              sources=outcome.raw_results)
+                    if dim is Dimension.NEWS_POSITIVE:
+                        news_positive_results = outcome.raw_results
+                    sections.append(outcome.section)
+                    yield SectionComplete(section=outcome.section, cached=False)
 
-        try:
-            backlog, backlog_cached = self._backlog_section(entity, cache, vendor_key,
-                                                             news_positive_results)
-        except Exception as exc:  # fatal: report would be incomplete without backlog
-            yield ReportError(message=str(exc))
-            return
-        sections.append(backlog)
-        yield SectionComplete(section=backlog, cached=backlog_cached)
+            try:
+                backlog, backlog_cached = self._backlog_section(entity, cache, vendor_key,
+                                                                 news_positive_results)
+            except Exception as exc:  # fatal: report would be incomplete without backlog
+                yield ReportError(message=str(exc))
+                return
+            sections.append(backlog)
+            yield SectionComplete(section=backlog, cached=backlog_cached)
 
-        score, reasoning = assemble_verdict(sections)
-        report = Report(vendor_input=vendor, entity=entity, sections=sections,
-                        verdict_score=score, verdict_reasoning=reasoning)
-        yield ReportComplete(report=report)
+            score, reasoning = assemble_verdict(sections)
+            report = Report(vendor_input=vendor, entity=entity, sections=sections,
+                            verdict_score=score, verdict_reasoning=reasoning)
+            yield ReportComplete(report=report)
+        finally:
+            cache.close()
 
     # --- worker: NO database access ---
     def _compute_section(self, dim: Dimension, entity: EntityCard) -> DimensionOutcome:

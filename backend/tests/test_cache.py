@@ -59,3 +59,15 @@ def test_put_without_sources_still_works(tmp_path):
     cache = SQLiteCache(tmp_path / "c.db", clock=_now)
     cache.put("acme.com", Dimension.SNAPSHOT, {"name": "Acme"})   # no sources arg
     assert cache.get("acme.com", Dimension.SNAPSHOT) == {"name": "Acme"}
+
+
+def test_close_closes_connection(tmp_path):
+    cache = SQLiteCache(tmp_path / "c.db", clock=_now)
+    cache.put("acme.com", Dimension.SNAPSHOT, {"name": "Acme"})
+    cache.close()
+    import sqlite3
+    try:
+        cache.get("acme.com", Dimension.SNAPSHOT)
+        assert False, "expected an error after close()"
+    except sqlite3.ProgrammingError:
+        pass
