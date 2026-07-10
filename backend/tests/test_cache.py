@@ -31,3 +31,31 @@ def test_fetched_at_exposed_for_as_of(tmp_path):
     cache = SQLiteCache(tmp_path / "c.db", clock=_now)
     cache.put("acme.com", Dimension.SNAPSHOT, {"x": 1})
     assert cache.fetched_at("acme.com", Dimension.SNAPSHOT) == _now()
+
+
+def test_put_persists_and_returns_sources_via_all_sections(tmp_path):
+    cache = SQLiteCache(tmp_path / "c.db", clock=_now)
+    cache.put("acme.com", Dimension.LEGAL, {"score": 5},
+              sources=[{"url": "https://a.com", "score": 0.7}])
+    got = cache.all_sections("acme.com")
+    assert Dimension.LEGAL in got
+    content, fetched = got[Dimension.LEGAL]
+    assert content == {"score": 5}
+    assert fetched == _now()
+
+
+def test_all_sections_ignores_ttl_and_returns_everything(tmp_path):
+    t = {"now": _now()}
+    cache = SQLiteCache(tmp_path / "c.db", clock=lambda: t["now"])
+    cache.put("acme.com", Dimension.NEWS_POSITIVE, {"score": 9})  # 1-day TTL
+    cache.put("acme.com", Dimension.LEGAL, {"score": 4})
+    t["now"] = _now() + timedelta(days=30)  # everything is now stale for get()
+    assert cache.get("acme.com", Dimension.NEWS_POSITIVE) is None  # get() honors TTL
+    got = cache.all_sections("acme.com")                            # all_sections does not
+    assert set(got) == {Dimension.NEWS_POSITIVE, Dimension.LEGAL}
+
+
+def test_put_without_sources_still_works(tmp_path):
+    cache = SQLiteCache(tmp_path / "c.db", clock=_now)
+    cache.put("acme.com", Dimension.SNAPSHOT, {"name": "Acme"})   # no sources arg
+    assert cache.get("acme.com", Dimension.SNAPSHOT) == {"name": "Acme"}
