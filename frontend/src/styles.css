@@ -120,10 +120,9 @@ body {
 
 .app { display: flex; height: 100vh; }
 .main { flex: 1; padding: 16px 20px; overflow-y: auto; }
-.main-header { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 10px; }
-.main-header .error-banner { flex: 1; margin-bottom: 0; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 16px; }
 .toolbar h3 { margin: 0; }
+.toolbar-actions { display: flex; align-items: center; gap: 12px; }
 .error-banner {
   background: var(--banner-bg); color: var(--banner-fg); padding: 8px 12px; border-radius: 6px;
   margin-bottom: 12px; cursor: pointer; font-size: 13px; overflow-wrap: break-word;
