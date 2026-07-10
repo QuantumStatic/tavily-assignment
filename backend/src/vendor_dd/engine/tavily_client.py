@@ -17,9 +17,12 @@ class SearchClient(Protocol):
     def search(self, **kwargs: Any) -> dict[str, Any]: ...
 
 
-def build_search_kwargs(dim: Dimension, entity: EntityCard, *, today: date) -> dict[str, Any]:
-    """Translate a dimension + entity card into Tavily search params (docs-backed)."""
+def build_search_kwargs(dim: Dimension, entity: EntityCard, *, today: date,
+                        query_template: str | None = None) -> dict[str, Any]:
+    """Translate a dimension + one of its query templates into Tavily search params.
+    Defaults to the dimension's first template; retrieve_dimension passes each in turn."""
     cfg = DIMENSION_CONFIGS[dim]
+    template = query_template if query_template is not None else cfg.query_templates[0]
     # Search on the common press name, never the full legal name — no article says
     # "Voith Hydro Holding GmbH & Co. KG". No quotes either: exact-phrase matching is
     # too brittle (a suffix like "GmbH" then returns nothing); we let Tavily rank
@@ -28,7 +31,7 @@ def build_search_kwargs(dim: Dimension, entity: EntityCard, *, today: date) -> d
     # No country in the query text: an international vendor's coverage is worldwide, so
     # "Voith Germany ..." would exclude its non-German news. General dims still scope
     # geography via Tavily's country param below.
-    query = cfg.query_template.format(name=name).strip()
+    query = template.format(name=name).strip()
 
     kwargs: dict[str, Any] = {
         "query": query,

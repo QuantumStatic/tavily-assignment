@@ -257,10 +257,13 @@ def test_public_company_backlog_uses_transcript_not_search(tmp_path):
     completed_dims = {e.section.dimension for e in events if e.type == "section_complete"}
     assert Dimension.BACKLOG in completed_dims
 
-    # transcript path used, NOT the news-reuse/search fallback: exactly one search for
-    # entity resolution plus one per Tavily dimension -- no extra backlog/news re-fetch
-    assert len(search.calls) == 1 + len(
-        [d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)])
+    # transcript path used, NOT the news-reuse/search fallback: one search for entity
+    # resolution plus one per query template of each Tavily dimension -- no extra
+    # backlog/news re-fetch
+    from vendor_dd.engine.config import DIMENSION_CONFIGS
+    tavily_dims = [d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)]
+    assert len(search.calls) == 1 + sum(
+        len(DIMENSION_CONFIGS[d].query_templates) for d in tavily_dims)
 
     # the backlog synthesis prompt embeds the transcript truncated to 6000 chars
     backlog_prompts = [p for p in llm.prompts if "backlog" in p]

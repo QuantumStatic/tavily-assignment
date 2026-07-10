@@ -85,10 +85,9 @@ def test_backlog_reuses_news_results_for_private_vendor(tmp_path):
 
     run_report("Cives Steel", deps)
 
-    # one search call for entity resolution + one per Tavily-backed dimension
-    # (NEWS results are reused for BACKLOG instead of triggering a second
-    # identical search call).
-    expected_calls = 1 + len(
-        [d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)]
-    )
+    # one search call for entity resolution + one per query template of each
+    # Tavily-backed dimension (NEWS results are reused for BACKLOG, no extra call).
+    from vendor_dd.engine.config import DIMENSION_CONFIGS
+    tavily_dims = [d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)]
+    expected_calls = 1 + sum(len(DIMENSION_CONFIGS[d].query_templates) for d in tavily_dims)
     assert search.call_count == expected_calls

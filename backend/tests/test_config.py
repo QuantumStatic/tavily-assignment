@@ -13,7 +13,7 @@ def test_news_uses_general_topic_with_a_news_keyword_and_120d_window():
     # NOT the news topic — it returns recency-broad noise for low-coverage vendors.
     cfg = DIMENSION_CONFIGS[Dimension.NEWS]
     assert cfg.topic == "general"
-    assert cfg.query_template == "{name} news"
+    assert cfg.query_templates[0] == "{name} news"
     assert cfg.recency_days == 120
     assert cfg.exclude_own_domain is False   # a vendor's own press releases are news too
 
@@ -23,7 +23,15 @@ def test_financial_uses_general_topic_with_financial_keywords():
     # + financial keywords does real relevance matching.
     cfg = DIMENSION_CONFIGS[Dimension.FINANCIAL]
     assert cfg.topic == "general"
-    assert "financial" in cfg.query_template
+    assert any("financial" in t or "revenue" in t for t in cfg.query_templates)
+
+
+def test_dimensions_use_multiple_focused_queries():
+    # Multi-query collate: the searched dims run several single-concept queries.
+    for dim in (Dimension.LEGAL, Dimension.SAFETY, Dimension.FINANCIAL,
+                Dimension.CERTIFICATIONS, Dimension.NEWS):
+        assert len(DIMENSION_CONFIGS[dim].query_templates) >= 2, dim
+        assert all("{name}" in t for t in DIMENSION_CONFIGS[dim].query_templates), dim
 
 
 def test_backlog_uses_finance_topic():

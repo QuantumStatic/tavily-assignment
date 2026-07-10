@@ -109,7 +109,9 @@ class FakeSearchWithContamination:
         ]}
 
 
-def test_retrieve_dimension_filters_contamination():
+def test_retrieve_dimension_filters_contamination_and_dedupes():
+    # FINANCIAL runs several queries; the fake returns the same 2 results each time.
+    # The wrong company is filtered and the good result is deduped to one.
     kept = retrieve_dimension(Dimension.FINANCIAL, _entity(),
                               search=FakeSearchWithContamination(), today=date(2026, 7, 8))
     assert len(kept) == 1
@@ -129,8 +131,10 @@ def test_retrieval_logs_filtered_count(tmp_path):
     assert events
     payload = events[-1]["payload"]
     assert payload["dimension"] == "financial"
-    assert payload["kept"] == 1      # one result mentions "Cives Steel" and scores well
-    assert payload["filtered"] == 1  # the other is a different company (Bayou Steel) + low score
+    assert payload["kept"] == 1                 # one distinct result names "Cives Steel"
+    assert payload["queries"] == 4              # financial runs 4 focused queries
+    assert payload["raw"] == 8                  # 2 results x 4 queries (fake echoes both)
+    assert payload["dropped"] == 7              # everything except the one deduped keeper
 
 
 def test_tavily_client_logs_request_and_response(tmp_path):
