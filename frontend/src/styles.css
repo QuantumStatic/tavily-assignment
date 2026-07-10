@@ -94,7 +94,13 @@ body {
 .add-vendor button:hover { opacity: .9; }
 .add-vendor button:disabled { opacity: .5; cursor: not-allowed; }
 
-.panel { width: 360px; min-width: 360px; border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; transition: background .2s ease, border-color .2s ease; }
+.panel { position: relative; flex-shrink: 0; border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; transition: background .2s ease, border-color .2s ease; }
+.panel-resize-handle {
+  position: absolute; top: 0; left: -3px; bottom: 0; width: 6px;
+  cursor: col-resize; touch-action: none;
+}
+.panel-resize-handle:hover, .panel-resize-handle:focus-visible { background: var(--accent); opacity: .5; }
+.panel-resize-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .verdict-reason { font-size: 13px; }
 .report-section { border-top: 1px solid var(--border-soft); padding-top: 8px; margin-top: 8px; }
