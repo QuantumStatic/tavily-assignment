@@ -48,31 +48,26 @@ def test_coerce_null_strings_leaves_non_nullable_fields_alone():
     assert out["name"] == "null"  # `name` isn't nullable in the schema; left as a literal string
 
 
-class _FakeToolCall:
-    def __init__(self, arguments: str):
-        self.function = type("F", (), {"arguments": arguments})()
-
-
 class _FakeMessage:
-    def __init__(self, arguments: str):
-        self.tool_calls = [_FakeToolCall(arguments)]
+    def __init__(self, content: str):
+        self.content = content
 
 
 class _FakeChoice:
-    def __init__(self, arguments: str):
-        self.message = _FakeMessage(arguments)
+    def __init__(self, content: str):
+        self.message = _FakeMessage(content)
 
 
 class _FakeResponse:
-    def __init__(self, arguments: str):
-        self.choices = [_FakeChoice(arguments)]
+    def __init__(self, content: str):
+        self.choices = [_FakeChoice(content)]
 
 
 class _RecordingClient:
-    """Fake openai.OpenAI-shaped client recording the request, returning canned tool args."""
+    """Fake openai.OpenAI-shaped client recording the request, returning canned content."""
 
-    def __init__(self, arguments: dict):
-        self._arguments = arguments
+    def __init__(self, content: dict):
+        self._content = content
         self.calls: list[dict] = []
         self.chat = self
 
@@ -82,10 +77,10 @@ class _RecordingClient:
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        return _FakeResponse(json.dumps(self._arguments))
+        return _FakeResponse(json.dumps(self._content))
 
 
-def test_structured_builds_strict_tool_and_parses_response():
+def test_structured_builds_strict_json_schema_and_parses_response():
     fake_client = _RecordingClient({
         "dimension": "legal", "findings": [], "reasoning": "clean", "score": 8,
     })
@@ -99,10 +94,12 @@ def test_structured_builds_strict_tool_and_parses_response():
     call = fake_client.calls[0]
     assert call["model"] == "test-model"
     assert call["reasoning_effort"] == "none"
-    assert call["tool_choice"] == {"type": "function", "function": {"name": "Section"}}
-    tool = call["tools"][0]
-    assert tool["function"]["strict"] is True
-    assert tool["function"]["parameters"]["additionalProperties"] is False
+    assert "tools" not in call and "tool_choice" not in call
+    rf = call["response_format"]
+    assert rf["type"] == "json_schema"
+    assert rf["json_schema"]["name"] == "Section"
+    assert rf["json_schema"]["strict"] is True
+    assert rf["json_schema"]["schema"]["additionalProperties"] is False
 
 
 def test_structured_coerces_literal_null_strings_in_response():
