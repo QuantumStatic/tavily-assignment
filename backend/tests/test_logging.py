@@ -57,3 +57,35 @@ def test_missing_correlation_id_is_null(tmp_path):
     configure_logging(tmp_path, level="INFO")
     get_logger("general").info("x", extra={"payload": {}})
     assert _read_lines(tmp_path / "general.log")[-1]["correlation_id"] is None
+
+
+def test_correlation_id_propagates_into_engine_worker_threads(tmp_path):
+    import json
+    from datetime import date
+    from vendor_dd.engine.pipeline import ReportEngine, Deps
+    from vendor_dd.engine.schemas import EntityCard, Section, Dimension
+    configure_logging(tmp_path / "logs", level="INFO")
+
+    class Search:
+        def search(self, **kwargs):
+            return {"results": [{"title": "x", "content": "Cives Steel", "url": "u", "score": 0.8}]}
+
+    class LLM:
+        def structured(self, prompt, schema):
+            if schema is EntityCard:
+                return EntityCard(name="Cives Steel", domain="cives.com", is_public=False)
+            return Section(dimension=Dimension.LEGAL, findings=[], reasoning="ok", score=8)
+
+    deps = Deps(search=Search(), llm=LLM(), cache_path=tmp_path / "c.db",
+                today=date(2026, 7, 8), fetch_transcript=lambda u: (None, None))
+    token = set_correlation_id("run-99")
+    try:
+        ReportEngine(deps, mode="parallel").run_report("Cives Steel")
+    finally:
+        correlation_id_var.reset(token)
+
+    # section.computed is emitted from a worker thread; it must still carry the id,
+    # proving contextvars.copy_context() propagation into the ThreadPoolExecutor worker.
+    lines = [json.loads(l) for l in (tmp_path / "logs" / "general.log").read_text().splitlines() if l.strip()]
+    section_events = [o for o in lines if o["event"] == "section.computed"]
+    assert section_events and all(o["correlation_id"] == "run-99" for o in section_events)

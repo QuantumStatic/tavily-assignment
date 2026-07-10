@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import date
@@ -17,6 +18,9 @@ from vendor_dd.engine.retrieval import retrieve_dimension
 from vendor_dd.engine.schemas import Dimension, EntityCard, Report, Section
 from vendor_dd.engine.synthesis import assemble_verdict, synthesize_section
 from vendor_dd.engine.tavily_client import SearchClient
+from vendor_dd.logs import get_logger
+
+_LOG = get_logger("general")
 
 # dimensions retrieved via Tavily (snapshot is entity resolution; backlog is special-cased)
 _TAVILY_DIMS = [d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)]
@@ -85,10 +89,12 @@ class ReportEngine:
         deps = self._deps
         Path(deps.cache_path).parent.mkdir(parents=True, exist_ok=True)
         cache = SQLiteCache(deps.cache_path)
+        _LOG.info("report.start", extra={"payload": {"vendor": vendor, "max_workers": self._max_workers}})
         try:
             try:
                 entity = self._resolve_entity_cached(vendor, cache)
             except Exception as exc:  # fatal: no entity to build a report around
+                _LOG.error("report.error", extra={"payload": {"stage": "entity", "error": str(exc)}})
                 yield ReportError(message=str(exc))
                 return
             yield EntityResolved(entity=entity)
@@ -106,13 +112,15 @@ class ReportEngine:
                         sections.append(section)
                         yield SectionComplete(section=section, cached=True)
                         continue
-                    pending[pool.submit(self._compute_section, dim, entity)] = dim
+                    ctx = contextvars.copy_context()
+                    pending[pool.submit(ctx.run, self._compute_section, dim, entity)] = dim
 
                 for fut in as_completed(pending):
                     dim = pending[fut]
                     try:
                         outcome = fut.result()
                     except Exception as exc:  # one dimension failed; the report goes on without it
+                        _LOG.error("section.error", extra={"payload": {"dimension": dim.value, "error": str(exc)}})
                         yield SectionError(dimension=dim, message=str(exc))
                         continue
                     cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
@@ -126,6 +134,7 @@ class ReportEngine:
                 backlog, backlog_cached = self._backlog_section(entity, cache, vendor_key,
                                                                  news_positive_results)
             except Exception as exc:  # fatal: report would be incomplete without backlog
+                _LOG.error("report.error", extra={"payload": {"stage": "backlog", "error": str(exc)}})
                 yield ReportError(message=str(exc))
                 return
             sections.append(backlog)
@@ -134,6 +143,8 @@ class ReportEngine:
             score, reasoning = assemble_verdict(sections)
             report = Report(vendor_input=vendor, entity=entity, sections=sections,
                             verdict_score=score, verdict_reasoning=reasoning)
+            _LOG.info("report.complete", extra={"payload": {"vendor": vendor, "score": score,
+                                                             "sections": len(sections)}})
             yield ReportComplete(report=report)
         finally:
             cache.close()
@@ -143,6 +154,7 @@ class ReportEngine:
         deps = self._deps
         results = retrieve_dimension(dim, entity, search=self._search, today=deps.today)
         section = synthesize_section(dim, results, llm=deps.llm)
+        _LOG.info("section.computed", extra={"payload": {"dimension": dim.value, "score": section.score}})
         return DimensionOutcome(section=section, raw_results=results)
 
     # --- driver-thread helpers (own the cache) ---
