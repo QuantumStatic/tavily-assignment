@@ -26,6 +26,43 @@ def test_add_list_remove_vendors(tmp_path):
     assert store.get_vendor(v.id) is None
 
 
+def test_remove_vendor_clears_its_cached_research(tmp_path):
+    """Deleting a vendor must evict its cache (both the name-keyed snapshot and the
+    domain-keyed sections) so a re-add re-runs fresh instead of serving stale results."""
+    from vendor_dd.engine.cache import SQLiteCache
+    from vendor_dd.engine.schemas import Dimension
+
+    db = tmp_path / "db.sqlite"
+    store = Store(db, clock=lambda: "2026-07-09T00:00:00+00:00")
+    p = store.create_project("Bridge job")
+    v = store.add_vendor(p.id, "Voith Hydro")
+    store.set_vendor_key(v.id, "voith.com")
+
+    # Populate the shared cache the way the pipeline does: snapshot under the input
+    # name, sections under the resolved domain.
+    cache = SQLiteCache(db)
+    cache.put("voith hydro", Dimension.SNAPSHOT, {"name": "Voith"})
+    cache.put("voith.com", Dimension.LEGAL, {"score": 2})
+    cache.put("voith.com", Dimension.FINANCIAL, {"score": 0})
+    assert cache.get("voith hydro", Dimension.SNAPSHOT) is not None
+    assert cache.get("voith.com", Dimension.LEGAL) is not None
+
+    store.remove_vendor(v.id)
+
+    fresh = SQLiteCache(db)
+    assert fresh.get("voith hydro", Dimension.SNAPSHOT) is None
+    assert fresh.get("voith.com", Dimension.LEGAL) is None
+    assert fresh.get("voith.com", Dimension.FINANCIAL) is None
+
+
+def test_remove_vendor_without_cache_table_does_not_crash(tmp_path):
+    store = _store(tmp_path)              # fresh DB, no report ever run
+    p = store.create_project("Bridge job")
+    v = store.add_vendor(p.id, "Cives Steel")
+    store.remove_vendor(v.id)            # must not raise "no such table: report_cache"
+    assert store.get_vendor(v.id) is None
+
+
 def test_set_vendor_key_backfill(tmp_path):
     store = _store(tmp_path)
     p = store.create_project("Bridge job")

@@ -122,8 +122,26 @@ class Store:
         return Vendor(*row) if row else None
 
     def remove_vendor(self, vendor_id: int) -> None:
+        row = self._exec(
+            "SELECT name, vendor_key FROM vendors WHERE id=?", (vendor_id,)).fetchone()
         self._exec("DELETE FROM vendors WHERE id=?", (vendor_id,))
+        if row is not None:
+            self._clear_cache(*row)
         self._conn.commit()
+
+    def _clear_cache(self, name: str, vendor_key: str | None) -> None:
+        """Evict a vendor's cached research so a re-add re-runs fresh. Its cache spans
+        two keys: the snapshot (entity card) is stored under the normalized input name,
+        the dimension sections under the resolved domain (vendor_key). Clear both."""
+        exists = self._exec(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_cache'").fetchone()
+        if not exists:   # no report has run yet -> nothing cached
+            return
+        keys = {name.strip().lower()}
+        if vendor_key:
+            keys.add(vendor_key.strip().lower())
+        for key in keys:
+            self._exec("DELETE FROM report_cache WHERE vendor_key=?", (key,))
 
     def set_vendor_key(self, vendor_id: int, vendor_key: str) -> None:
         self._exec(
