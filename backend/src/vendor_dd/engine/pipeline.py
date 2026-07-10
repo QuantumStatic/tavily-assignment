@@ -13,7 +13,7 @@ from vendor_dd.engine.entity import resolve_entity
 from vendor_dd.engine.events import (
     EntityResolved, ReportComplete, ReportError, ReportEvent, SectionComplete, SectionError,
 )
-from vendor_dd.engine.llm import LLMClient
+from vendor_dd.engine.llm import LLMClient, LLMError
 from vendor_dd.engine.retrieval import retrieve_dimension
 from vendor_dd.engine.schemas import Dimension, EntityCard, Report, Section
 from vendor_dd.engine.synthesis import assemble_verdict, synthesize_section
@@ -140,9 +140,14 @@ class ReportEngine:
             sections.append(backlog)
             yield SectionComplete(section=backlog, cached=backlog_cached)
 
-            score, reasoning = assemble_verdict(sections)
-            report = Report(vendor_input=vendor, entity=entity, sections=sections,
-                            verdict_score=score, verdict_reasoning=reasoning)
+            try:
+                score, reasoning = assemble_verdict(sections)
+                report = Report(vendor_input=vendor, entity=entity, sections=sections,
+                                verdict_score=score, verdict_reasoning=reasoning)
+            except Exception as exc:  # fatal: no report without a verdict
+                _LOG.error("report.error", extra={"payload": {"stage": "verdict", "error": str(exc)}})
+                yield ReportError(message="report could not be generated")
+                return
             _LOG.info("report.complete", extra={"payload": {"vendor": vendor, "score": score,
                                                              "sections": len(sections)}})
             yield ReportComplete(report=report)
@@ -198,7 +203,11 @@ class ReportEngine:
                 # usually stale/refetched), so falling back to a live call here is acceptable.
                 results = retrieve_dimension(Dimension.NEWS_POSITIVE, entity,
                                              search=self._search, today=deps.today)
-        section = synthesize_section(Dimension.BACKLOG, results, llm=deps.llm)
+        try:
+            section = synthesize_section(Dimension.BACKLOG, results, llm=deps.llm)
+        except LLMError:
+            # backlog synthesis is fatal (report incomplete without it) — one retry
+            section = synthesize_section(Dimension.BACKLOG, results, llm=deps.llm)
         cache.put(vendor_key, Dimension.BACKLOG, section.model_dump(mode="json"), sources=results)
         return section, False
 
