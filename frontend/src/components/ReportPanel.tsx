@@ -34,6 +34,14 @@ export function ReportPanel({ row, onClose }: { row: RowState; onClose: () => vo
 
       {!report && row.status === 'streaming' && <p className="muted">Generating report…</p>}
 
+      {!report && row.status === 'done' && (
+        <p className="muted">
+          {row.sectionsPresent != null && row.sectionsExpected != null
+            ? `Still generating — ${row.sectionsPresent} of ${row.sectionsExpected} dimensions complete.`
+            : 'Report data is incomplete.'}
+        </p>
+      )}
+
       {report && (
         <>
           <p className="verdict-reason">{report.verdict_reasoning}</p>

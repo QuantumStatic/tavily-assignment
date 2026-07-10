@@ -13,6 +13,8 @@ export interface RowState {
   status: 'idle' | 'streaming' | 'done' | 'error'
   errorMsg?: string
   report?: Report
+  sectionsPresent?: number
+  sectionsExpected?: number
 }
 
 const cellsWith = (value: CellState): Record<string, CellState> =>
@@ -30,6 +32,7 @@ export function rowFromSummary(v: VendorSummary): RowState {
   const base: RowState = {
     vendorId: v.vendor_id, name: v.name, vendorKey: v.vendor_key,
     cells: cellsWith('idle'), verdict: 'idle', status: 'idle',
+    sectionsPresent: v.sections_present, sectionsExpected: v.sections_expected,
   }
   if (!v.generated) return base
   const cells = cellsWith('failed')

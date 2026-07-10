@@ -7,6 +7,8 @@ export interface VendorSummary {
   name: string
   vendor_key: string | null
   generated: boolean
+  sections_present: number
+  sections_expected: number
   verdict_score: number | null
   verdict_reasoning: string | null
   dimensions: DimensionScore[]
@@ -35,6 +37,8 @@ export interface VendorReport {
   generated: boolean
   vendor_key: string | null
   entity: EntityCard | null
+  sections_present: number
+  sections_expected: number
   verdict_score: number | null
   verdict_reasoning: string | null
   sections: Section[]
