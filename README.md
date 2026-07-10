@@ -8,8 +8,9 @@ summary. Every field carries a source URL and an "as of" date.
 Powered by [Tavily](https://tavily.com) search/extract for retrieval, with a
 per-section TTL cache, an evaluation loop, and tracing.
 
-> Status: scaffolding. Backend internals are stubbed pending a feasibility spike
-> against the Tavily API (see below). Design is being finalized before build.
+> Status: backend complete (engine + CLI + FastAPI/SSE API, 70 tests) and a React frontend
+> (projects, live streaming comparison table, cited report panel, 36 tests). Runs end-to-end
+> locally.
 
 ## Project layout
 
@@ -20,7 +21,7 @@ backend/          FastAPI + engine (Python)
     surfaces/     thin adapters: cli, api (SSE), mcp server
   spikes/         feasibility probes (run these first)
   tests/
-frontend/         React + Vite + TS (scaffolded after backend feasibility)
+frontend/         React + Vite + TS — sidebar + live comparison table + report panel
 evals/            ground-truth sets + eval runner
 ```
 
@@ -41,11 +42,14 @@ evals/            ground-truth sets + eval runner
    uv run tavily_probe.py "Acme Regional HVAC Supply"  # obscure private vendor
    ```
 
-## Next steps
+## Roadmap
 
-- [ ] Run feasibility spike, read the output, lock the pipeline shape
-- [ ] Finalize + approve the design
-- [ ] Build engine (retrieval → cache → synthesis → report)
-- [ ] Surfaces: CLI, API (SSE), MCP
-- [ ] Eval loop + tracing
-- [ ] Frontend
+- [x] Engine: retrieval → cache → synthesis → report (Phase 1)
+- [x] Surfaces: CLI + FastAPI API with SSE streaming + persistence (Phase 2)
+- [x] Frontend: projects, live comparison table, cited report panel (Phase 3)
+- [x] Tavily per-project `session_id` for search grouping/traceability (Phase 3)
+- [ ] **Phase 4 — Tracing & logging:** structured request/run logging across the engine and API,
+      and end-to-end tracing (spans per report run / per dimension), aligning with
+      industry-standard observability. *(next)*
+- [ ] Phase 5 — Eval loop over `evals/ground_truth` (citation-support + contamination checks)
+- [ ] Phase 6 — MCP server exposing `check_vendor(name)`; chat over cached `sources`
