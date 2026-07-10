@@ -1,5 +1,6 @@
 import type { RowState } from '../rows'
 import { DIMENSIONS } from '../dimensions'
+import { bandForScore } from '../band'
 
 const LABEL = new Map(DIMENSIONS.map((d) => [d.key, d.label]))
 
@@ -22,7 +23,9 @@ export function ReportPanel({ row, onClose }: { row: RowState; onClose: () => vo
       <div className="panel-head">
         <div>
           <strong>{entity?.name ?? row.name}</strong>
-          {typeof verdict === 'object' && <span className="pill good"> {verdict.score}/10</span>}
+          {typeof verdict === 'object' && (
+            <span className={`pill ${bandForScore(verdict.score)}`}> {verdict.score}/10</span>
+          )}
         </div>
         <button className="link-btn" onClick={onClose} aria-label="Close">✕</button>
       </div>
