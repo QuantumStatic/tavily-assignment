@@ -15,7 +15,7 @@ from vendor_dd.engine.backlog import fetch_transcript_text
 from vendor_dd.engine.events import (
     EntityResolved, ReportComplete, ReportError, SectionComplete, SectionError,
 )
-from vendor_dd.engine.llm import NebiusLLM
+from vendor_dd.engine.llm import OpenAILLM
 from vendor_dd.engine.pipeline import Deps, ReportEngine
 from vendor_dd.engine.tavily_client import TavilySearchClient
 
@@ -30,14 +30,14 @@ console = Console()
 @app.command()
 def main(vendor: str) -> None:
     """Generate a due-diligence report for VENDOR (streams sections as they complete)."""
-    tavily_key, nebius_key = os.getenv("TAVILY_API_KEY"), os.getenv("NEBIUS_API_KEY")
-    if not tavily_key or not nebius_key:
-        console.print("[red]Set TAVILY_API_KEY and NEBIUS_API_KEY in .env[/red]")
+    tavily_key, openai_key = os.getenv("TAVILY_API_KEY"), os.getenv("OPENAI_API_KEY")
+    if not tavily_key or not openai_key:
+        console.print("[red]Set TAVILY_API_KEY and OPENAI_API_KEY in .env[/red]")
         raise typer.Exit(1)
 
     deps = Deps(
         search=TavilySearchClient(tavily_key),
-        llm=NebiusLLM(),
+        llm=OpenAILLM(),
         cache_path=Path(".vendor_dd_cache.db"),
         today=date.today(),
         fetch_transcript=fetch_transcript_text,
