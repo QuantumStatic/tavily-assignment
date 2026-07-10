@@ -26,3 +26,24 @@ test('a non-ok response rejects', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({}) }))
   await expect(api.getProject(9)).rejects.toThrow()
 })
+
+test('a non-ok response with a detail body surfaces that detail as the error message', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: false, status: 404, json: async () => ({ detail: 'vendor not found' }),
+  }))
+  await expect(api.getReport(9)).rejects.toThrow('vendor not found')
+})
+
+test('a non-ok response with no parseable body falls back to a generic message', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: false, status: 500, json: async () => { throw new Error('not json') },
+  }))
+  await expect(api.getReport(9)).rejects.toThrow('request failed: 500')
+})
+
+test('deleteVendor rejects with the detail body on a non-ok response', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: false, status: 404, json: async () => ({ detail: 'vendor not found' }),
+  }))
+  await expect(api.deleteVendor(9)).rejects.toThrow('vendor not found')
+})

@@ -3,9 +3,20 @@ import type { Project, ProjectDetail, VendorOut, VendorReport } from './types'
 const BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
 
+async function ensureOk(r: Response): Promise<Response> {
+  if (r.ok) return r
+  let detail: string | undefined
+  try {
+    const body = await r.json()
+    detail = typeof body?.detail === 'string' ? body.detail : undefined
+  } catch {
+    // body wasn't JSON (or empty) — fall through to the generic message
+  }
+  throw new Error(detail ?? `request failed: ${r.status}`)
+}
+
 async function json<T>(r: Response): Promise<T> {
-  if (!r.ok) throw new Error(`request failed: ${r.status}`)
-  return r.json() as Promise<T>
+  return (await ensureOk(r)).json() as Promise<T>
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json' }
@@ -24,8 +35,6 @@ export const api = {
       method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ name }),
     }).then(json<VendorOut>),
   deleteVendor: (id: number) =>
-    fetch(`${BASE}/vendors/${id}`, { method: 'DELETE' }).then((r) => {
-      if (!r.ok) throw new Error(`request failed: ${r.status}`)
-    }),
+    fetch(`${BASE}/vendors/${id}`, { method: 'DELETE' }).then(ensureOk).then(() => undefined),
   getReport: (id: number) => fetch(`${BASE}/vendors/${id}/report`).then(json<VendorReport>),
 }
