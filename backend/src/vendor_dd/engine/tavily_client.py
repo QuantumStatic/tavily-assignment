@@ -21,7 +21,10 @@ def build_search_kwargs(dim: Dimension, entity: EntityCard, *, today: date) -> d
     """Translate a dimension + entity card into Tavily search params (docs-backed)."""
     cfg = DIMENSION_CONFIGS[dim]
     geo = "" if cfg.use_country else (entity.country or "")  # geo in query only when country unusable
-    name = f'"{entity.name}"' if cfg.exact_match else entity.name
+    # Search on the common press name, never the full legal name — no article says
+    # "Voith Hydro Holding GmbH & Co. KG", so quoting it returns zero hits.
+    search_name = entity.search_name or entity.name
+    name = f'"{search_name}"' if cfg.exact_match else search_name
     query = cfg.query_template.format(name=name, geo=geo).replace("  ", " ").strip()
 
     kwargs: dict[str, Any] = {

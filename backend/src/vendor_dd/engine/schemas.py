@@ -43,6 +43,11 @@ class Section(BaseModel):
 
 class EntityCard(BaseModel):
     name: str
+    # Short, common name the press/public actually use (e.g. "Voith Hydro", not
+    # "Voith Hydro Holding GmbH & Co. KG"). Used to build search queries and filter
+    # results; the full legal `name` never appears in news coverage. Falls back to
+    # `name` when the model omits it.
+    search_name: str | None = None
     domain: str | None = None
     country: str | None = None
     industry: str | None = None

@@ -26,6 +26,34 @@ def test_news_kwargs_use_news_topic_no_country_90d_window():
     assert kw["start_date"] == "2026-04-09"           # today - 90 days
 
 
+def test_queries_and_filter_use_the_common_search_name_not_the_legal_name():
+    """Regression: quoting the full legal name (e.g. "Voith Hydro Holding GmbH & Co. KG")
+    returns zero hits because no article writes it. Queries and the entity filter must use
+    the short press name instead."""
+    voith = EntityCard(name="Voith Hydro Holding GmbH & Co. KG", search_name="Voith Hydro",
+                       domain="voith.com", country="germany", is_public=False)
+
+    kw = build_search_kwargs(Dimension.LEGAL, voith, today=date(2026, 7, 8))
+    assert '"Voith Hydro"' in kw["query"]                       # short name, quoted
+    assert "Holding GmbH" not in kw["query"]                    # never the legal suffix
+
+    # A real article says "Voith Hydro", not the legal name — it must survive the filter.
+    class _Search:
+        def search(self, **kwargs):
+            return {"results": [{"title": "Voith Hydro wins contract",
+                                 "content": "Voith Hydro announced", "url": "https://n.com/x",
+                                 "score": 0.7}]}
+
+    kept = retrieve_dimension(Dimension.NEWS_POSITIVE, voith, search=_Search(), today=date(2026, 7, 8))
+    assert len(kept) == 1
+
+
+def test_search_name_falls_back_to_legal_name_when_absent():
+    e = EntityCard(name="Cives Steel", domain="cives.com", country="united states")
+    kw = build_search_kwargs(Dimension.LEGAL, e, today=date(2026, 7, 8))
+    assert '"Cives Steel"' in kw["query"]                       # no search_name -> use name
+
+
 def test_certifications_include_own_domain():
     kw = build_search_kwargs(Dimension.CERTIFICATIONS, _entity(), today=date(2026, 7, 8))
     assert kw["include_domains"] == ["cives.com"]
