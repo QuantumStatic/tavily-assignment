@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -41,7 +42,8 @@ def main(vendor: str) -> None:
         today=date.today(),
         fetch_transcript=fetch_transcript_text,
     )
-    engine = ReportEngine(deps, mode="parallel")
+    # One session_id per CLI run groups this invocation's ~8 Tavily searches together.
+    engine = ReportEngine(deps, mode="parallel", session_id=uuid.uuid4().hex)
 
     report = None
     with console.status(f"Researching {vendor}..."):
