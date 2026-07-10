@@ -87,3 +87,11 @@ def test_store_logs_sql_queries(tmp_path):
     store.create_project("Acme")
     lines = [json.loads(l) for l in (tmp_path / "logs" / "db.log").read_text().splitlines() if l.strip()]
     assert any(o["event"] == "db.query" and "projects" in o["payload"]["sql"] for o in lines)
+
+
+def test_store_enables_wal_and_busy_timeout(tmp_path):
+    store = _store(tmp_path)
+    mode = store._conn.execute("PRAGMA journal_mode").fetchone()[0]
+    timeout = store._conn.execute("PRAGMA busy_timeout").fetchone()[0]
+    assert mode.lower() == "wal"
+    assert timeout >= 3000
