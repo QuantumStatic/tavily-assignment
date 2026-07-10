@@ -3,8 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from vendor_dd.engine.config import SCORE_THRESHOLD
-
 # Legal-entity tokens that appear in a registered name but almost never in news
 # coverage ("Voith GmbH" in the filings, "Voith" in the headlines). Stripped before
 # the name-presence check so a suffix on the resolved name doesn't reject real hits.
@@ -32,9 +30,9 @@ def verify_entity(result: dict[str, Any], entity_name: str) -> bool:
     return all(tok in hay for tok in tokens) if tokens else True
 
 
-def passes_filter(result: dict[str, Any], entity_name: str,
-                  threshold: float = SCORE_THRESHOLD) -> bool:
-    """Anti-contamination gate: drop weak scores and wrong-company results."""
-    if result.get("score", 0.0) < threshold:
-        return False
+def passes_filter(result: dict[str, Any], entity_name: str) -> bool:
+    """Anti-contamination gate: keep a result iff it actually names the company.
+    Tavily's relevance score is topic-dependent and unreliable (news scores run ~10x
+    lower than general/finance and don't even rank the right company first), so
+    name-presence is the gate — not score."""
     return verify_entity(result, entity_name)
