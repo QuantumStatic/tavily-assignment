@@ -57,7 +57,15 @@ body {
    verdict + dimension columns evenly share the rest (table-layout: fixed). */
 .vendor-table th:first-child, .vendor-table td:first-child { text-align: left; width: 200px; }
 .vendor-table th:last-child, .vendor-table td:last-child { width: 48px; }
-.vendor-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); position: sticky; top: 0; background: var(--bg); }
+.vendor-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); position: sticky; top: 0; background: var(--bg); white-space: nowrap; }
+.col-help {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; margin-left: 5px; vertical-align: middle;
+  border: 1px solid var(--border); border-radius: 50%;
+  font-size: 9px; font-weight: 700; line-height: 1; color: var(--text-muted);
+  cursor: help; text-transform: none;
+}
+.col-help:hover, .col-help:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .vendor-row { cursor: pointer; }
 .vendor-row:hover { background: var(--hover); }
 .vendor-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
