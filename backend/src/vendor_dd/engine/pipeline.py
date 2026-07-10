@@ -101,7 +101,7 @@ class ReportEngine:
 
             vendor_key = (entity.domain or entity.name).strip().lower()
             sections: list[Section] = []
-            news_positive_results: list[dict] | None = None
+            news_results: list[dict] | None = None
 
             with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
                 pending: dict = {}
@@ -125,14 +125,14 @@ class ReportEngine:
                         continue
                     cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
                               sources=outcome.raw_results)
-                    if dim is Dimension.NEWS_POSITIVE:
-                        news_positive_results = outcome.raw_results
+                    if dim is Dimension.NEWS:
+                        news_results = outcome.raw_results
                     sections.append(outcome.section)
                     yield SectionComplete(section=outcome.section, cached=False)
 
             try:
                 backlog, backlog_cached = self._backlog_section(entity, cache, vendor_key,
-                                                                 news_positive_results)
+                                                                 news_results)
             except Exception as exc:  # fatal: report would be incomplete without backlog
                 _LOG.error("report.error", extra={"payload": {"stage": "backlog", "error": str(exc)}})
                 yield ReportError(message="report could not be generated")
@@ -178,7 +178,7 @@ class ReportEngine:
         return entity
 
     def _backlog_section(self, entity: EntityCard, cache: SQLiteCache, vendor_key: str,
-                         news_positive_results: list[dict] | None) -> tuple[Section, bool]:
+                         news_results: list[dict] | None) -> tuple[Section, bool]:
         cached = cache.get(vendor_key, Dimension.BACKLOG)
         if cached is not None:
             return Section.model_validate(cached), True
@@ -192,16 +192,16 @@ class ReportEngine:
                 if text:
                     results = [{"title": "Earnings call transcript", "url": quote_url,
                                 "content": text[:6000], "score": 1.0, "as_of": call_date}]
-        if not results:  # private or no transcript -> reuse positive-news as a backlog proxy
-            if news_positive_results is not None:
-                # NEWS_POSITIVE was freshly retrieved this run (not a cache hit) -> reuse
-                # those raw results instead of paying for a second, identical Tavily call.
-                results = news_positive_results
+        if not results:  # private or no transcript -> reuse news results as a backlog proxy
+            if news_results is not None:
+                # NEWS was freshly retrieved this run (not a cache hit) -> reuse those raw
+                # results instead of paying for a second, identical Tavily call.
+                results = news_results
             else:
-                # NEWS_POSITIVE was served from cache this run, so there are no fresh raw
-                # results to reuse. This is a rarer path (news has a 1-day TTL, so it's
-                # usually stale/refetched), so falling back to a live call here is acceptable.
-                results = retrieve_dimension(Dimension.NEWS_POSITIVE, entity,
+                # NEWS was served from cache this run, so there are no fresh raw results to
+                # reuse. This is a rarer path (news has a 1-day TTL, so it's usually
+                # stale/refetched), so falling back to a live call here is acceptable.
+                results = retrieve_dimension(Dimension.NEWS, entity,
                                              search=self._search, today=deps.today)
         try:
             section = synthesize_section(Dimension.BACKLOG, results, llm=deps.llm)

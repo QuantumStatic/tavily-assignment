@@ -70,7 +70,7 @@ def test_iter_events_sequence(tmp_path):
     assert events[0].type == "entity_resolved"
     assert events[-1].type == "report_complete"
     completed = [e for e in events if e.type == "section_complete"]
-    # 6 Tavily dims + backlog = 7 sections
+    # 5 Tavily dims + backlog = 6 sections
     dims = {e.section.dimension for e in completed}
     assert dims == {d for d in Dimension if d is not Dimension.SNAPSHOT}
 
@@ -139,9 +139,9 @@ def test_backlog_failure_yields_report_error(tmp_path):
     engine = ReportEngine(_deps(tmp_path, llm=BacklogFailsLLM()), mode="sequential")
     events = list(engine.iter_events("Cives Steel"))
     assert events[0].type == "entity_resolved"
-    assert len(events) == 8
-    completed = [e for e in events[1:7] if e.type == "section_complete"]
-    assert len(completed) == 6
+    assert len(events) == 7
+    completed = [e for e in events[1:6] if e.type == "section_complete"]
+    assert len(completed) == 5
     dims = {e.section.dimension for e in completed}
     assert dims == {d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)}
     assert isinstance(events[-1], ReportError)

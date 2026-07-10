@@ -17,9 +17,9 @@ def test_put_then_get_fresh_returns_payload(tmp_path):
 def test_get_expired_returns_none(tmp_path):
     t = {"now": _now()}
     cache = SQLiteCache(tmp_path / "c.db", clock=lambda: t["now"])
-    cache.put("acme.com", Dimension.NEWS_POSITIVE, {"score": 9})  # TTL = 1 day
+    cache.put("acme.com", Dimension.NEWS, {"score": 9})  # TTL = 1 day
     t["now"] = _now() + timedelta(days=2)                          # advance past TTL
-    assert cache.get("acme.com", Dimension.NEWS_POSITIVE) is None
+    assert cache.get("acme.com", Dimension.NEWS) is None
 
 
 def test_get_missing_returns_none(tmp_path):
@@ -47,12 +47,12 @@ def test_put_persists_and_returns_sources_via_all_sections(tmp_path):
 def test_all_sections_ignores_ttl_and_returns_everything(tmp_path):
     t = {"now": _now()}
     cache = SQLiteCache(tmp_path / "c.db", clock=lambda: t["now"])
-    cache.put("acme.com", Dimension.NEWS_POSITIVE, {"score": 9})  # 1-day TTL
+    cache.put("acme.com", Dimension.NEWS, {"score": 9})  # 1-day TTL
     cache.put("acme.com", Dimension.LEGAL, {"score": 4})
     t["now"] = _now() + timedelta(days=30)  # everything is now stale for get()
-    assert cache.get("acme.com", Dimension.NEWS_POSITIVE) is None  # get() honors TTL
+    assert cache.get("acme.com", Dimension.NEWS) is None  # get() honors TTL
     got = cache.all_sections("acme.com")                            # all_sections does not
-    assert set(got) == {Dimension.NEWS_POSITIVE, Dimension.LEGAL}
+    assert set(got) == {Dimension.NEWS, Dimension.LEGAL}
 
 
 def test_put_without_sources_still_works(tmp_path):

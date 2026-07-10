@@ -12,8 +12,7 @@ class Dimension(str, Enum):
     FINANCIAL = "financial"
     BACKLOG = "backlog"
     CERTIFICATIONS = "certifications"
-    NEWS_POSITIVE = "news_positive"
-    NEWS_NEGATIVE = "news_negative"
+    NEWS = "news"
 
 
 class SourceType(str, Enum):

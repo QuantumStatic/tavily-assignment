@@ -6,6 +6,5 @@ export const DIMENSIONS: { key: string; label: string }[] = [
   { key: 'safety', label: 'Safety' },
   { key: 'certifications', label: 'Certs' },
   { key: 'backlog', label: 'Backlog/Ops' },
-  { key: 'news_positive', label: 'News +' },
-  { key: 'news_negative', label: 'News −' },
+  { key: 'news', label: 'News' },
 ]
