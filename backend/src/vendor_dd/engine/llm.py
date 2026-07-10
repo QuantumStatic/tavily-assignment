@@ -5,7 +5,7 @@ import os
 import time
 from typing import Any, Protocol, TypeVar
 
-from openai import OpenAI
+from openai import APIError, APITimeoutError, OpenAI
 from pydantic import BaseModel
 
 from vendor_dd.engine.llm_schema import coerce_null_strings, to_strict_schema
@@ -21,10 +21,16 @@ class LLMClient(Protocol):
 
 
 class LLMError(RuntimeError):
-    """The model returned an unusable response (empty/none content or invalid JSON)."""
+    """The model returned an unusable response (empty/none content, invalid JSON, a
+    timeout, or any transport error)."""
 
 
 _NEBIUS_BASE_URL = "https://api.tokenfactory.us-central1.nebius.com/v1/"
+
+# Per-call ceiling so a stalled synthesis can't hang the whole report generator forever
+# (the SDK default is 600s ≈ never for a live UI). On expiry the call raises LLMError,
+# which the pipeline turns into a per-dimension SectionError. Override via env.
+_LLM_TIMEOUT_S = float(os.environ.get("VENDOR_DD_LLM_TIMEOUT", "90"))
 
 
 def _usage_dict(usage) -> dict[str, Any] | None:
@@ -70,7 +76,7 @@ class NebiusLLM:
             self._client = client
             return
         key = api_key or os.environ["NEBIUS_API_KEY"]
-        self._client = OpenAI(base_url=_NEBIUS_BASE_URL, api_key=key)
+        self._client = OpenAI(base_url=_NEBIUS_BASE_URL, api_key=key, timeout=_LLM_TIMEOUT_S)
 
     def structured(self, prompt: str, schema: type[T]) -> T:
         json_schema = to_strict_schema(schema.model_json_schema())
@@ -79,15 +85,23 @@ class NebiusLLM:
             "reasoning_effort": "none", "prompt": prompt,
         }})
         started = time.monotonic()
-        resp = self._client.chat.completions.create(
-            model=self._model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"name": schema.__name__, "schema": json_schema, "strict": True},
-            },
-            reasoning_effort="none",
-        )
+        try:
+            resp = self._client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": schema.__name__, "schema": json_schema, "strict": True},
+                },
+                reasoning_effort="none",
+            )
+        except APITimeoutError as exc:
+            _LOG.error("llm.error", extra={"payload": {"schema": schema.__name__,
+                                                       "error": f"timeout after {_LLM_TIMEOUT_S}s"}})
+            raise LLMError(f"{schema.__name__}: LLM call timed out after {_LLM_TIMEOUT_S}s") from exc
+        except APIError as exc:
+            _LOG.error("llm.error", extra={"payload": {"schema": schema.__name__, "error": str(exc)}})
+            raise LLMError(f"{schema.__name__}: LLM transport error") from exc
         content = _extract_content(resp)
         latency_ms = round((time.monotonic() - started) * 1000)
         _LOG.info("llm.response", extra={"payload": {

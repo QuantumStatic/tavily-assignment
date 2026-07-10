@@ -152,3 +152,33 @@ def test_malformed_json_raises_clear_llm_error():
     llm = NebiusLLM(model="m", client=_BadClient(_resp("{not json")))
     with pytest.raises(LLMError):
         llm.structured("p", Section)
+
+
+class _TimeoutClient:
+    """A client whose create() hangs long enough to trip the SDK timeout."""
+    def __init__(self, exc):
+        self._exc = exc
+        self.chat = self
+    @property
+    def completions(self):
+        return self
+    def create(self, **kwargs):
+        raise self._exc
+
+
+def test_llm_timeout_becomes_llm_error():
+    from openai import APITimeoutError
+    import httpx
+    exc = APITimeoutError(request=httpx.Request("POST", "http://x"))
+    llm = NebiusLLM(model="m", client=_TimeoutClient(exc))
+    with pytest.raises(LLMError, match="timed out"):
+        llm.structured("p", Section)
+
+
+def test_llm_transport_error_becomes_llm_error():
+    from openai import APIError
+    import httpx
+    exc = APIError("boom", request=httpx.Request("POST", "http://x"), body=None)
+    llm = NebiusLLM(model="m", client=_TimeoutClient(exc))
+    with pytest.raises(LLMError):
+        llm.structured("p", Section)
