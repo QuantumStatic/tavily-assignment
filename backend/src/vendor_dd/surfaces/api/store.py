@@ -130,9 +130,10 @@ class Store:
         self._conn.commit()
 
     def _clear_cache(self, name: str, vendor_key: str | None) -> None:
-        """Evict a vendor's cached research so a re-add re-runs fresh. Its cache spans
-        two keys: the snapshot (entity card) is stored under the normalized input name,
-        the dimension sections under the resolved domain (vendor_key). Clear both."""
+        """Evict a deleted vendor's cached research so a re-add re-runs fresh. The cache
+        is keyed by domain and SHARED across projects, so only evict a key if no other
+        vendor still references it (same name for the snapshot key, same domain for the
+        section key) — otherwise a delete in one project would wipe another's report."""
         exists = self._exec(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_cache'").fetchone()
         if not exists:   # no report has run yet -> nothing cached
@@ -141,6 +142,12 @@ class Store:
         if vendor_key:
             keys.add(vendor_key.strip().lower())
         for key in keys:
+            # the target vendor row is already deleted, so any hit here is another vendor
+            still_referenced = self._exec(
+                "SELECT 1 FROM vendors WHERE LOWER(name)=? OR LOWER(vendor_key)=? LIMIT 1",
+                (key, key)).fetchone()
+            if still_referenced:
+                continue
             self._exec("DELETE FROM report_cache WHERE vendor_key=?", (key,))
 
     def set_vendor_key(self, vendor_id: int, vendor_key: str) -> None:

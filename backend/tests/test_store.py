@@ -55,6 +55,36 @@ def test_remove_vendor_clears_its_cached_research(tmp_path):
     assert fresh.get("voith.com", Dimension.FINANCIAL) is None
 
 
+def test_remove_vendor_keeps_cache_while_another_vendor_references_it(tmp_path):
+    """The report cache is shared by domain across projects. Deleting the same vendor
+    from one project must NOT wipe another project's still-present copy."""
+    from vendor_dd.engine.cache import SQLiteCache
+    from vendor_dd.engine.schemas import Dimension
+
+    db = tmp_path / "db.sqlite"
+    store = Store(db, clock=lambda: "2026-07-09T00:00:00+00:00")
+    pa = store.create_project("Project A")
+    pb = store.create_project("Project B")
+    va = store.add_vendor(pa.id, "Voith Hydro"); store.set_vendor_key(va.id, "voith.com")
+    vb = store.add_vendor(pb.id, "Voith Hydro"); store.set_vendor_key(vb.id, "voith.com")
+
+    cache = SQLiteCache(db)
+    cache.put("voith hydro", Dimension.SNAPSHOT, {"name": "Voith"})
+    cache.put("voith.com", Dimension.LEGAL, {"score": 2})
+
+    store.remove_vendor(va.id)                       # delete from Project A only
+
+    # Project B still references voith.com / "voith hydro" -> cache survives
+    fresh = SQLiteCache(db)
+    assert fresh.get("voith hydro", Dimension.SNAPSHOT) is not None
+    assert fresh.get("voith.com", Dimension.LEGAL) is not None
+
+    store.remove_vendor(vb.id)                       # now the last reference is gone
+    gone = SQLiteCache(db)
+    assert gone.get("voith hydro", Dimension.SNAPSHOT) is None
+    assert gone.get("voith.com", Dimension.LEGAL) is None
+
+
 def test_remove_vendor_without_cache_table_does_not_crash(tmp_path):
     store = _store(tmp_path)              # fresh DB, no report ever run
     p = store.create_project("Bridge job")
