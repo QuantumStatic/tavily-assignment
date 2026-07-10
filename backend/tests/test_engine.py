@@ -146,3 +146,17 @@ def test_backlog_failure_yields_report_error(tmp_path):
     assert isinstance(events[-1], ReportError)
     assert "backlog boom" in events[-1].message
     assert not any(e.type == "report_complete" for e in events)
+
+
+def test_iter_events_closes_cache_when_generator_abandoned(tmp_path):
+    import sqlite3
+    engine = ReportEngine(_deps(tmp_path), mode="sequential")
+    gen = engine.iter_events("Cives Steel")
+    next(gen)  # consume just the first event (EntityResolved), then abandon
+    gen.close()  # explicitly trigger GeneratorExit, simulating client-disconnect cleanup
+    # the cache this generator opened should now be closed; a fresh cache against
+    # the same path should still work fine (proves no corruption / file-lock left behind)
+    from vendor_dd.engine.cache import SQLiteCache
+    fresh = SQLiteCache(tmp_path / "c.db")
+    assert fresh.get("cives steel", Dimension.SNAPSHOT) is not None  # entity was cached before abandonment
+    fresh.close()

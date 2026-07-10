@@ -66,6 +66,9 @@ class SQLiteCache:
         row = self._row(vendor_key, section)
         return row[1] if row else None
 
+    def close(self) -> None:
+        self._conn.close()
+
     def all_sections(self, vendor_key: str) -> dict[Dimension, tuple[dict[str, Any], datetime]]:
         """Every stored section for a vendor with its fetched_at, ignoring TTL.
         Freshness is a UI concern; the comparison table shows whatever's cached."""
