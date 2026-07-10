@@ -72,6 +72,14 @@ body {
 }
 .link-btn { border: none; background: none; cursor: pointer; color: var(--text-muted); font-size: 12px; }
 .link-btn:hover { color: var(--danger); }
+.delete-btn {
+  border: none; background: none; cursor: pointer; color: var(--danger);
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px; border-radius: 6px; line-height: 0;
+  transition: background .15s ease, color .15s ease;
+}
+.delete-btn:hover { background: var(--banner-bg); }
+.delete-btn:focus-visible { outline: 2px solid var(--danger); outline-offset: 1px; }
 .empty { color: var(--text-muted); padding: 24px; }
 
 .sidebar { width: 220px; min-width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 12px; transition: background .2s ease, border-color .2s ease; }
