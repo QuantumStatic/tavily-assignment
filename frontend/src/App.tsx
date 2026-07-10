@@ -157,7 +157,6 @@ export default function App() {
 
   return (
     <div className="app">
-      <ThemeToggle theme={theme} onToggle={toggleTheme} />
       <Sidebar
         projects={projects}
         activeId={activeId}
@@ -165,7 +164,10 @@ export default function App() {
         onCreate={createProject}
       />
       <main className="main">
-        {error && <div className="error-banner" onClick={() => setError(null)}>{error}</div>}
+        <div className="main-header">
+          {error && <div className="error-banner" onClick={() => setError(null)}>{error}</div>}
+          <ThemeToggle theme={theme} onToggle={toggleTheme} />
+        </div>
         {activeProject ? (
           <>
             <div className="toolbar">
