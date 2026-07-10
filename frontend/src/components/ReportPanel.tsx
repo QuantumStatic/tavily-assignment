@@ -1,8 +1,16 @@
+import { useState } from 'react'
 import type { RowState } from '../rows'
 import { DIMENSIONS } from '../dimensions'
 import { bandForScore } from '../band'
 
 const LABEL = new Map(DIMENSIONS.map((d) => [d.key, d.label]))
+
+const DEFAULT_WIDTH = 360
+const MIN_WIDTH = 280
+const MAX_WIDTH = 720
+const KEYBOARD_STEP = 20
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
 function isSafeUrl(url: string): boolean {
   try {
@@ -17,9 +25,48 @@ export function ReportPanel({ row, onClose }: { row: RowState; onClose: () => vo
   const report = row.report
   const entity = row.entity
   const verdict = row.verdict
+  const [width, setWidth] = useState(DEFAULT_WIDTH)
+
+  function startDrag(e: React.MouseEvent) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = width
+    function onMove(ev: MouseEvent) {
+      // dragging the left edge leftward should widen the panel
+      setWidth(clamp(startWidth + (startX - ev.clientX), MIN_WIDTH, MAX_WIDTH))
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  function onHandleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'ArrowLeft') {
+      setWidth((w) => clamp(w + KEYBOARD_STEP, MIN_WIDTH, MAX_WIDTH))
+      e.preventDefault()
+    } else if (e.key === 'ArrowRight') {
+      setWidth((w) => clamp(w - KEYBOARD_STEP, MIN_WIDTH, MAX_WIDTH))
+      e.preventDefault()
+    }
+  }
 
   return (
-    <aside className="panel">
+    <aside className="panel" style={{ width }}>
+      <div
+        className="panel-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize report panel"
+        aria-valuenow={width}
+        aria-valuemin={MIN_WIDTH}
+        aria-valuemax={MAX_WIDTH}
+        tabIndex={0}
+        onMouseDown={startDrag}
+        onKeyDown={onHandleKeyDown}
+      />
       <div className="panel-head">
         <div>
           <strong>{entity?.name ?? row.name}</strong>

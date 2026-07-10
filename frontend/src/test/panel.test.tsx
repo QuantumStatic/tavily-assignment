@@ -1,5 +1,5 @@
 import { expect, test, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReportPanel } from '../components/ReportPanel'
 import type { RowState } from '../rows'
@@ -78,4 +78,53 @@ test('verdict pill uses the score band, not always green', () => {
   render(<ReportPanel row={{ ...row, verdict: { score: 2 } }} onClose={() => {}} />)
   const pill = screen.getByText('2/10')
   expect(pill.className).toMatch(/\bbad\b/)
+})
+
+test('the panel starts at the default width and exposes a resize handle', () => {
+  render(<ReportPanel row={row} onClose={() => {}} />)
+  const panel = screen.getByRole('separator', { name: /resize report panel/i }).closest('.panel')
+  expect(panel).toHaveStyle({ width: '360px' })
+})
+
+test('dragging the resize handle left widens the panel', () => {
+  render(<ReportPanel row={row} onClose={() => {}} />)
+  const handle = screen.getByRole('separator', { name: /resize report panel/i })
+  const panel = handle.closest('.panel')!
+
+  fireEvent.mouseDown(handle, { clientX: 500 })
+  fireEvent.mouseMove(window, { clientX: 400 })   // dragged 100px left
+  expect(panel).toHaveStyle({ width: '460px' })
+
+  fireEvent.mouseUp(window)
+  fireEvent.mouseMove(window, { clientX: 200 })   // no listener anymore -> no further change
+  expect(panel).toHaveStyle({ width: '460px' })
+})
+
+test('resize is clamped to the min/max width bounds', () => {
+  render(<ReportPanel row={row} onClose={() => {}} />)
+  const handle = screen.getByRole('separator', { name: /resize report panel/i })
+  const panel = handle.closest('.panel')!
+
+  fireEvent.mouseDown(handle, { clientX: 500 })
+  fireEvent.mouseMove(window, { clientX: 5000 })  // drag far right -> would shrink below MIN_WIDTH
+  expect(panel).toHaveStyle({ width: '280px' })
+  fireEvent.mouseUp(window)
+
+  fireEvent.mouseDown(handle, { clientX: 500 })
+  fireEvent.mouseMove(window, { clientX: -5000 }) // drag far left -> would exceed MAX_WIDTH
+  expect(panel).toHaveStyle({ width: '720px' })
+  fireEvent.mouseUp(window)
+})
+
+test('arrow keys on the resize handle adjust the panel width', () => {
+  render(<ReportPanel row={row} onClose={() => {}} />)
+  const handle = screen.getByRole('separator', { name: /resize report panel/i })
+  const panel = handle.closest('.panel')!
+
+  fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+  expect(panel).toHaveStyle({ width: '380px' })
+
+  fireEvent.keyDown(handle, { key: 'ArrowRight' })
+  fireEvent.keyDown(handle, { key: 'ArrowRight' })
+  expect(panel).toHaveStyle({ width: '340px' })
 })
