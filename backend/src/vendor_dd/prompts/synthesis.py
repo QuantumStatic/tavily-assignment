@@ -5,6 +5,8 @@ produce the "{dimension}" section. Rules:
 - Only use claims supported by a result; set source_type=self_reported if the source is the
   vendor's own site, else independent.
 - If coverage is thin, do NOT award a confident high score; say so in reasoning.
+- reasoning may use light Markdown for scannability: **bold** for key figures/verdicts
+  and `-` bullet points for distinct items. Keep it to a few sentences or bullets.
 
 Results:
 {results}
