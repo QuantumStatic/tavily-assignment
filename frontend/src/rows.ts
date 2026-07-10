@@ -61,7 +61,14 @@ export function reduceEvent(row: RowState, ev: ReportStreamEvent): RowState {
       return { ...row, status: 'done', report: ev.report,
                entity: ev.report.entity, cells: cellsFromSections(ev.report.sections),
                verdict: { score: ev.report.verdict_score } }
-    case 'report_error':
-      return { ...row, status: 'error', errorMsg: ev.message, verdict: 'failed' }
+    case 'report_error': {
+      // Flip any cells still awaiting a result to failed too — a dropped/errored stream
+      // means nothing more is coming for them. Cells that already scored successfully
+      // (or already failed) are left untouched.
+      const cells = Object.fromEntries(
+        Object.entries(row.cells).map(([k, v]) => [k, v === 'pending' ? 'failed' : v]),
+      )
+      return { ...row, status: 'error', errorMsg: ev.message, verdict: 'failed', cells }
+    }
   }
 }
