@@ -12,7 +12,7 @@ from rich.table import Table
 
 from vendor_dd.engine.backlog import fetch_transcript_text
 from vendor_dd.engine.events import (
-    EntityResolved, ReportComplete, SectionComplete, SectionError,
+    EntityResolved, ReportComplete, ReportError, SectionComplete, SectionError,
 )
 from vendor_dd.engine.llm import NebiusLLM
 from vendor_dd.engine.pipeline import Deps, ReportEngine
@@ -58,6 +58,9 @@ def main(vendor: str) -> None:
                 console.print(f"  ✓ {s.dimension.value}: {s.score}/10{tag}")
             elif isinstance(ev, SectionError):
                 console.print(f"  [red]✗ {ev.dimension.value} failed: {ev.message}[/red]")
+            elif isinstance(ev, ReportError):
+                console.print(f"[red]Report failed: {ev.message}[/red]")
+                raise typer.Exit(1)
             elif isinstance(ev, ReportComplete):
                 report = ev.report
 
