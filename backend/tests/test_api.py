@@ -196,3 +196,23 @@ def test_http_middleware_does_not_buffer_the_sse_stream(tmp_path):
     lines = [json.loads(l) for l in (tmp_path / "logs" / "http.log").read_text().splitlines() if l.strip()]
     stream_resp = [o for o in lines if o["event"] == "http.response" and "/report/stream" in o["payload"]["path"]]
     assert stream_resp and stream_resp[-1]["payload"].get("body") in (None, "<streaming>")
+
+
+def test_read_model_reports_section_completeness(tmp_path):
+    from vendor_dd.engine.cache import SQLiteCache
+    from vendor_dd.engine.schemas import Dimension, Section
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+    # backfill vendor_key + seed just 2 of 7 sections directly into the shared cache
+    key = "cives.com"
+    client.app.state.store.set_vendor_key(vid, key)
+    cache = SQLiteCache(tmp_path / "db.sqlite")
+    for dim in (Dimension.LEGAL, Dimension.FINANCIAL):
+        cache.put(key, dim, Section(dimension=dim, findings=[], reasoning="x", score=6).model_dump(mode="json"))
+    cache.close()
+
+    summ = client.get(f"/projects/{pid}").json()["vendors"][0]
+    assert summ["sections_present"] == 2 and summ["sections_expected"] == 7
+    report = client.get(f"/vendors/{vid}/report").json()
+    assert report["sections_present"] == 2 and report["sections_expected"] == 7

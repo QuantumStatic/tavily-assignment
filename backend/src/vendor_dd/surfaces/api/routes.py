@@ -17,6 +17,8 @@ from vendor_dd.surfaces.api.store import Store, Vendor
 
 router = APIRouter()
 
+EXPECTED_SECTIONS = len([d for d in Dimension if d is not Dimension.SNAPSHOT])
+
 
 def _store(request: Request) -> Store:
     return request.app.state.store
@@ -38,14 +40,14 @@ def _summarize(vendor: Vendor, cache: SQLiteCache) -> VendorSummary:
     if not parsed:
         return VendorSummary(vendor_id=vendor.id, name=vendor.name, vendor_key=vendor.vendor_key,
                              generated=False, verdict_score=None, verdict_reasoning=None,
-                             dimensions=[])
+                             dimensions=[], sections_present=0, sections_expected=EXPECTED_SECTIONS)
     sections = [sec for sec, _ in parsed.values()]
     score, reasoning = assemble_verdict(sections)
     dims = [DimensionScore(dimension=d, score=sec.score, as_of=ts.isoformat())
             for d, (sec, ts) in parsed.items()]
     return VendorSummary(vendor_id=vendor.id, name=vendor.name, vendor_key=vendor.vendor_key,
                          generated=True, verdict_score=score, verdict_reasoning=reasoning,
-                         dimensions=dims)
+                         dimensions=dims, sections_present=len(parsed), sections_expected=EXPECTED_SECTIONS)
 
 
 @router.post("/projects", response_model=ProjectOut)
@@ -105,7 +107,8 @@ def get_report(vendor_id: int, request: Request):
         parsed = _report_sections(cache, vendor.vendor_key) if vendor.vendor_key else {}
         if not parsed:
             return VendorReport(generated=False, vendor_key=vendor.vendor_key, entity=None,
-                                verdict_score=None, verdict_reasoning=None, sections=[])
+                                verdict_score=None, verdict_reasoning=None, sections=[],
+                                sections_present=0, sections_expected=EXPECTED_SECTIONS)
         sections = [sec for sec, _ in parsed.values()]
         score, reasoning = assemble_verdict(sections)
         entity_raw = cache.get(vendor.name.strip().lower(), Dimension.SNAPSHOT)
@@ -113,7 +116,8 @@ def get_report(vendor_id: int, request: Request):
     finally:
         cache.close()
     return VendorReport(generated=True, vendor_key=vendor.vendor_key, entity=entity,
-                        verdict_score=score, verdict_reasoning=reasoning, sections=sections)
+                        verdict_score=score, verdict_reasoning=reasoning, sections=sections,
+                        sections_present=len(parsed), sections_expected=EXPECTED_SECTIONS)
 
 
 @router.get("/vendors/{vendor_id}/report/stream")
