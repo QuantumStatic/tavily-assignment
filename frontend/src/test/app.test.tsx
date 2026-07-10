@@ -170,6 +170,40 @@ test('selecting an already-generated vendor fetches its report from the REST end
   expect(fetchMock.mock.calls.some(([u]) => String(u).match(/\/vendors\/9\/report$/))).toBe(true)
 })
 
+test('selecting a partially-generated vendor shows a still-generating note instead of a blank panel', async () => {
+  const projects = [{ id: 1, name: 'Bridge job', created_at: 't' }]
+  const projectDetails = {
+    1: {
+      id: 1, name: 'Bridge job', created_at: 't',
+      vendors: [{
+        vendor_id: 9, name: 'Cives Steel', vendor_key: 'cives-steel', generated: true,
+        sections_present: 2, sections_expected: 7,
+        verdict_score: null, verdict_reasoning: null,
+        dimensions: [{ dimension: 'legal', score: 8, as_of: '2026-06' }],
+      }],
+    },
+  }
+  // the read-model report is only partially assembled: sections exist but the verdict
+  // hasn't been computed yet, so entity/verdict_score/verdict_reasoning are still null
+  const vendorReports = {
+    9: {
+      generated: true, vendor_key: 'cives-steel', entity: null,
+      verdict_score: null, verdict_reasoning: null,
+      sections: [{ dimension: 'legal', score: 8, reasoning: 'clean', findings: [] }],
+      sections_present: 2, sections_expected: 7,
+    },
+  }
+  mockApi({ projects, projectDetails, vendorReports })
+  render(<App />)
+
+  await screen.findByRole('heading', { name: 'Bridge job' })
+  const row = await screen.findByText('Cives Steel')
+  await userEvent.click(row)
+
+  await screen.findByText(/2 of 7/i)
+  expect(screen.queryByText(/generating report…/i)).not.toBeInTheDocument()
+})
+
 test('switching the active project closes the previous project\'s open streams', async () => {
   const projects = [
     { id: 1, name: 'Bridge job', created_at: 't' },

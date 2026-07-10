@@ -42,6 +42,16 @@ test('a streaming row with no report yet shows a progress note', () => {
   expect(screen.getByText(/generating/i)).toBeInTheDocument()
 })
 
+test('a done row with no report yet (partial completeness) shows a still-generating note, not a blank body', () => {
+  render(
+    <ReportPanel
+      row={{ ...row, status: 'done', report: undefined, sectionsPresent: 2, sectionsExpected: 7 }}
+      onClose={() => {}}
+    />,
+  )
+  expect(screen.getByText(/still generating.*2 of 7 dimensions complete/i)).toBeInTheDocument()
+})
+
 test('renders a safe https citation link', () => {
   render(<ReportPanel row={row} onClose={() => {}} />)
   expect(screen.getByRole('link', { name: /pacer/i })).toHaveAttribute('href', 'https://pacer.gov')

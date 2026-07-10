@@ -4,6 +4,7 @@ import type { VendorSummary } from '../types'
 
 const summary = (over: Partial<VendorSummary> = {}): VendorSummary => ({
   vendor_id: 1, name: 'Cives', vendor_key: 'cives.com', generated: false,
+  sections_present: 0, sections_expected: 7,
   verdict_score: null, verdict_reasoning: null, dimensions: [], ...over,
 })
 
@@ -22,6 +23,22 @@ test('rowFromSummary: generated -> scored cells + verdict', () => {
   expect(r.status).toBe('done')
   expect(r.verdict).toEqual({ score: 6 })
   expect(r.cells.legal).toEqual({ score: 8 })
+})
+
+test('rowFromSummary: carries sections_present/sections_expected onto the row', () => {
+  const r = rowFromSummary(summary({
+    generated: true, sections_present: 2, sections_expected: 7,
+    verdict_score: null, verdict_reasoning: null,
+    dimensions: [{ dimension: 'legal', score: 8, as_of: 't' }],
+  }))
+  expect(r.sectionsPresent).toBe(2)
+  expect(r.sectionsExpected).toBe(7)
+})
+
+test('rowFromSummary: carries sections_present/sections_expected even when not generated', () => {
+  const r = rowFromSummary(summary({ sections_present: 0, sections_expected: 7 }))
+  expect(r.sectionsPresent).toBe(0)
+  expect(r.sectionsExpected).toBe(7)
 })
 
 test('streaming lifecycle: pending -> scored -> failed -> complete', () => {

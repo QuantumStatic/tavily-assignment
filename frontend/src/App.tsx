@@ -3,6 +3,7 @@ import type { Project } from './types'
 import type { ReportStreamEvent } from './types'
 import type { RowState } from './rows'
 import { rowFromSummary, startStreaming, reduceEvent } from './rows'
+import { DIMENSIONS } from './dimensions'
 import { api } from './api'
 import { openReportStream } from './stream'
 import { Sidebar } from './components/Sidebar'
@@ -17,7 +18,8 @@ type RowsAction =
   | { kind: 'upsert'; row: RowState }
   | { kind: 'remove'; vendorId: number }
   | { kind: 'event'; vendorId: number; ev: ReportStreamEvent }
-  | { kind: 'setReport'; vendorId: number; report: RowState['report']; entity: RowState['entity'] }
+  | { kind: 'setReport'; vendorId: number; report: RowState['report']; entity: RowState['entity']
+      sectionsPresent?: number; sectionsExpected?: number }
 
 function rowsReducer(state: RowState[], action: RowsAction): RowState[] {
   switch (action.kind) {
@@ -34,7 +36,9 @@ function rowsReducer(state: RowState[], action: RowsAction): RowState[] {
         r.vendorId === action.vendorId ? reduceEvent(r, action.ev) : r)
     case 'setReport':
       return state.map((r) => r.vendorId === action.vendorId
-        ? { ...r, report: action.report, entity: action.entity ?? r.entity } : r)
+        ? { ...r, report: action.report, entity: action.entity ?? r.entity,
+            sectionsPresent: action.sectionsPresent ?? r.sectionsPresent,
+            sectionsExpected: action.sectionsExpected ?? r.sectionsExpected } : r)
   }
 }
 
@@ -102,7 +106,8 @@ export default function App() {
       if (activeIdRef.current !== forProject) return   // user switched projects while this was in flight
       const row = startStreaming(rowFromSummary({
         vendor_id: v.id, name: v.name, vendor_key: v.vendor_key,
-        generated: false, verdict_score: null, verdict_reasoning: null, dimensions: [],
+        generated: false, sections_present: 0, sections_expected: DIMENSIONS.length,
+        verdict_score: null, verdict_reasoning: null, dimensions: [],
       }))
       dispatch({ kind: 'upsert', row })
       const close = openReportStream(
@@ -137,15 +142,18 @@ export default function App() {
     if (!row || row.status !== 'done' || row.report) return
     try {
       const fetched = await api.getReport(vendorId)
-      if (fetched.verdict_score == null || fetched.verdict_reasoning == null || fetched.entity == null) return
-      const report = {
+      const complete = fetched.verdict_score != null && fetched.verdict_reasoning != null && fetched.entity != null
+      const report = complete ? {
         vendor_input: row.name,
-        entity: fetched.entity,
+        entity: fetched.entity!,
         sections: fetched.sections,
-        verdict_score: fetched.verdict_score,
-        verdict_reasoning: fetched.verdict_reasoning,
-      }
-      dispatch({ kind: 'setReport', vendorId, report, entity: fetched.entity })
+        verdict_score: fetched.verdict_score!,
+        verdict_reasoning: fetched.verdict_reasoning!,
+      } : undefined
+      dispatch({
+        kind: 'setReport', vendorId, report, entity: fetched.entity ?? undefined,
+        sectionsPresent: fetched.sections_present, sectionsExpected: fetched.sections_expected,
+      })
     } catch {
       setError('Could not load the report.')
     }

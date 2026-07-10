@@ -7,6 +7,7 @@ import type { VendorSummary } from '../types'
 
 const summary = (over: Partial<VendorSummary>): VendorSummary => ({
   vendor_id: 1, name: 'Cives', vendor_key: 'cives.com', generated: false,
+  sections_present: 0, sections_expected: 7,
   verdict_score: null, verdict_reasoning: null, dimensions: [], ...over,
 })
 
