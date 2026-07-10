@@ -108,7 +108,10 @@ export default function App() {
       const close = openReportStream(
         v.id,
         (ev) => dispatch({ kind: 'event', vendorId: v.id, ev }),
-        () => setError('The report stream dropped. Use ✕ and re-add the vendor to retry.'),
+        () => {
+          dispatch({ kind: 'event', vendorId: v.id, ev: { type: 'report_error', message: 'stream dropped' } })
+          setError('The report stream dropped — the row is marked failed. Delete and re-add to retry.')
+        },
       )
       streams.current.set(v.id, close)
     } catch {

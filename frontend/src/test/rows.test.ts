@@ -58,3 +58,21 @@ test('report_error marks the row failed', () => {
   expect(r.verdict).toBe('failed')
   expect(r.errorMsg).toBe('fatal')
 })
+
+test('report_error only flips still-pending cells to failed, leaving scored/failed cells alone', () => {
+  let r = startStreaming(rowFromSummary(summary()))
+  r = reduceEvent(r, {
+    type: 'section_complete',
+    section: { dimension: 'legal', score: 8, findings: [], reasoning: '' }, cached: false,
+  })
+  r = reduceEvent(r, { type: 'section_error', dimension: 'financial', message: 'boom' })
+  // legal is scored, financial already failed, every other dimension is still pending
+  expect(r.cells.legal).toEqual({ score: 8 })
+  expect(r.cells.financial).toBe('failed')
+  expect(r.cells.safety).toBe('pending')
+
+  r = reduceEvent(r, { type: 'report_error', message: 'stream dropped' })
+  expect(r.cells.legal).toEqual({ score: 8 })      // untouched: real score preserved
+  expect(r.cells.financial).toBe('failed')          // untouched: already failed
+  expect(r.cells.safety).toBe('failed')             // flipped: was pending
+})

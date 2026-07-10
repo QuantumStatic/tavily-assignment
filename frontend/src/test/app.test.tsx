@@ -95,6 +95,32 @@ test('add a vendor, watch cells stream in, open the report panel', async () => {
   expect(screen.getByRole('link', { name: /X/ })).toHaveAttribute('href', 'https://x.com')
 })
 
+test('a dropped SSE stream marks the row failed instead of leaving it pending forever', async () => {
+  mockApi()
+  render(<App />)
+
+  await screen.findByRole('heading', { name: 'Bridge job' })
+
+  await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
+  await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
+  await screen.findByText('Cives Steel')
+
+  const es = await waitFor(() => {
+    const e = FakeEventSource.last()
+    if (!e) throw new Error('no stream yet')
+    return e
+  })
+  es.emit('entity_resolved', { entity: { name: 'Cives Steel', domain: 'cives.com' } })
+
+  // stream drops before completion
+  es.fail()
+
+  // the verdict cell shows failed, not a perpetual pending spinner
+  await waitFor(() => expect(document.querySelector('.vendor-row .failed')).not.toBeNull())
+  expect(document.querySelector('.vendor-row .dot')).toBeNull()
+  expect(screen.getByText(/stream dropped/i)).toBeInTheDocument()
+})
+
 test('selecting an already-generated vendor fetches its report from the REST endpoint', async () => {
   const projects = [
     { id: 1, name: 'Bridge job', created_at: 't' },
