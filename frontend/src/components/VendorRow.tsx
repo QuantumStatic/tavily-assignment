@@ -1,19 +1,28 @@
 import type { RowState } from '../rows'
 import { DIMENSIONS } from '../dimensions'
 import { DimensionCell } from './DimensionCell'
+import { bandForScore } from '../band'
 
 export function VendorRow({
   row, onSelect, onDelete,
 }: { row: RowState; onSelect: (id: number) => void; onDelete: (id: number) => void }) {
   const verdict = row.verdict
   return (
-    <tr className="vendor-row" onClick={() => onSelect(row.vendorId)}>
+    <tr
+      className="vendor-row"
+      tabIndex={0}
+      role="button"
+      onClick={() => onSelect(row.vendorId)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(row.vendorId) }
+      }}
+    >
       <td className="vendor-name">{row.name}</td>
       <td className="cell">
         {verdict === 'idle' ? '—'
           : verdict === 'pending' ? <span className="dot" />
           : verdict === 'failed' ? <span className="failed">✗</span>
-          : <span className={`pill ${verdict.score >= 7 ? 'good' : verdict.score >= 4 ? 'mid' : 'bad'}`}>
+          : <span className={`pill ${bandForScore(verdict.score)}`}>
               {verdict.score}/10
             </span>}
       </td>
@@ -21,7 +30,11 @@ export function VendorRow({
         <DimensionCell key={d.key} dim={d.key} state={row.cells[d.key] ?? 'idle'} />
       ))}
       <td className="cell">
-        <button className="link-btn" onClick={(e) => { e.stopPropagation(); onDelete(row.vendorId) }}>
+        <button
+          className="link-btn"
+          aria-label="Delete vendor"
+          onClick={(e) => { e.stopPropagation(); onDelete(row.vendorId) }}
+        >
           ✕
         </button>
       </td>
