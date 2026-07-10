@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from vendor_dd.engine.config import DIMENSION_CONFIGS
 from vendor_dd.engine.filtering import passes_filter
 from vendor_dd.engine.schemas import Dimension, EntityCard
 from vendor_dd.engine.tavily_client import SearchClient, build_search_kwargs
@@ -19,7 +20,8 @@ def retrieve_dimension(dim: Dimension, entity: EntityCard, *,
     # Filter on the common press name too — an article that says "Voith" would be
     # dropped if we required the full legal name to appear verbatim.
     match_name = entity.search_name or entity.name
-    kept = [r for r in results if passes_filter(r, match_name)]
+    threshold = DIMENSION_CONFIGS[dim].score_threshold
+    kept = [r for r in results if passes_filter(r, match_name, threshold)]
     _LOG.info("retrieval.filtered", extra={"payload": {
         "dimension": dim.value, "kept": len(kept), "filtered": len(results) - len(kept),
     }})
