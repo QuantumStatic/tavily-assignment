@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { RowState } from '../rows'
 import { DIMENSIONS } from '../dimensions'
 import { bandForScore } from '../band'
+import { Markdown } from './Markdown'
 
 const LABEL = new Map(DIMENSIONS.map((d) => [d.key, d.label]))
 
@@ -92,11 +93,11 @@ export function ReportPanel({ row, onClose }: { row: RowState; onClose: () => vo
 
         {report && (
           <>
-            <p className="verdict-reason">{report.verdict_reasoning}</p>
+            <Markdown className="verdict-reason md" text={report.verdict_reasoning} />
             {report.sections.map((s) => (
               <section key={s.dimension} className="report-section">
                 <h5>{LABEL.get(s.dimension) ?? s.dimension} · {s.score}/10</h5>
-                <p className="muted">{s.reasoning}</p>
+                <Markdown className="muted md" text={s.reasoning} />
                 {s.findings.map((f, i) => (
                   <div key={i} className="finding">
                     <span>{f.claim}</span>

@@ -138,6 +138,13 @@ body {
 /* sticky header: stays put with the company name + close button while the body scrolls */
 .panel-head { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
 .verdict-reason { font-size: 13px; }
+/* rendered reasoning markdown (bold / lists / code) */
+.md p { margin: 0 0 6px; }
+.md p:last-child { margin-bottom: 0; }
+.md ul, .md ol { margin: 4px 0; padding-left: 18px; }
+.md li { margin: 2px 0; }
+.md strong { font-weight: 700; }
+.md code { font-size: .92em; background: var(--hover-strong); padding: 0 3px; border-radius: 3px; }
 .report-section { border-top: 1px solid var(--border-soft); padding-top: 8px; margin-top: 8px; }
 .report-section h5 { margin: 0 0 4px; font-size: 13px; }
 .muted { color: var(--text-muted); font-size: 12px; }
