@@ -73,3 +73,8 @@ def test_missing_project_and_vendor_return_404(tmp_path):
     client = _client(tmp_path)
     assert client.get("/projects/9999").status_code == 404
     assert client.get("/vendors/9999/report").status_code == 404
+
+
+def test_delete_missing_vendor_returns_404(tmp_path):
+    client = _client(tmp_path)
+    assert client.delete("/vendors/9999").status_code == 404
