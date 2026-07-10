@@ -29,3 +29,8 @@ test('the new-project form submits a trimmed name and clears', async () => {
   expect(onCreate).toHaveBeenCalledWith('Q1 RFP')
   expect(input).toHaveValue('')
 })
+
+test('shows an empty-state message when there are no projects', () => {
+  render(<Sidebar projects={[]} activeId={null} onSelect={() => {}} onCreate={() => {}} />)
+  expect(screen.getByText(/create a project/i)).toBeInTheDocument()
+})
