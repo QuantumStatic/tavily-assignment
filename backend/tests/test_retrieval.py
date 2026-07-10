@@ -54,6 +54,40 @@ def test_search_name_falls_back_to_legal_name_when_absent():
     assert '"Cives Steel"' in kw["query"]                       # no search_name -> use name
 
 
+class FakeLowScoreNewsSearch:
+    """News-topic results score an order of magnitude lower than general/finance and
+    don't rank the right company first (mirrors the real Voith run)."""
+    def search(self, **kwargs):
+        return {"results": [
+            {"title": "Voith appoints new CEO of Voith Turbo", "content": "Voith announced",
+             "url": "https://news.com/voith", "score": 0.10},          # real, low score
+            {"title": "Nigeria secures $428M German investment", "content": "unrelated",
+             "url": "https://news.com/ng", "score": 0.117},            # noise, higher score
+            {"title": "Merz pension debate", "content": "German politics",
+             "url": "https://news.com/merz", "score": 0.04},           # noise
+        ]}
+
+
+def test_news_keeps_low_scored_but_entity_named_results():
+    """Regression: the global 0.40 floor nuked every news hit (news scores ~0.05-0.12),
+    dropping genuine coverage. News gates on entity-name presence, not score."""
+    voith = EntityCard(name="Voith Hydro Holding GmbH & Co. KG", search_name="Voith",
+                       domain="voith.com", country="germany")
+    kept = retrieve_dimension(Dimension.NEWS_POSITIVE, voith,
+                              search=FakeLowScoreNewsSearch(), today=date(2026, 7, 8))
+    urls = [r["url"] for r in kept]
+    assert urls == ["https://news.com/voith"]   # only the one that actually names Voith survives
+
+
+def test_non_news_dimensions_still_enforce_the_high_score_floor():
+    """The low news floor must not leak into general/finance dims."""
+    from vendor_dd.engine.config import DIMENSION_CONFIGS, SCORE_THRESHOLD, NEWS_SCORE_THRESHOLD
+    assert DIMENSION_CONFIGS[Dimension.LEGAL].score_threshold == SCORE_THRESHOLD
+    assert DIMENSION_CONFIGS[Dimension.FINANCIAL].score_threshold == SCORE_THRESHOLD
+    assert DIMENSION_CONFIGS[Dimension.NEWS_POSITIVE].score_threshold == NEWS_SCORE_THRESHOLD
+    assert DIMENSION_CONFIGS[Dimension.NEWS_NEGATIVE].score_threshold == NEWS_SCORE_THRESHOLD
+
+
 def test_certifications_include_own_domain():
     kw = build_search_kwargs(Dimension.CERTIFICATIONS, _entity(), today=date(2026, 7, 8))
     assert kw["include_domains"] == ["cives.com"]
