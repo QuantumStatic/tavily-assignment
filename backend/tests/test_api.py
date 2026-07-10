@@ -15,3 +15,61 @@ def test_schemas_construct():
     assert ProjectDetail(id=1, name="p", created_at="t", vendors=[summ]).vendors[0].generated
     assert VendorReport(generated=False, vendor_key=None, entity=None, verdict_score=None,
                         verdict_reasoning=None, sections=[]).generated is False
+
+
+from datetime import date
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from vendor_dd.engine.schemas import EntityCard, Section, Dimension
+from vendor_dd.engine.pipeline import Deps
+from vendor_dd.surfaces.api.app import create_app
+
+
+class FakeSearch:
+    def search(self, **kwargs):
+        return {"results": [{"title": "Cives Steel news", "content": "Cives Steel Company",
+                             "url": "https://x.com", "score": 0.8}]}
+
+
+class FakeLLM:
+    def structured(self, prompt, schema):
+        if schema is EntityCard:
+            return EntityCard(name="Cives Steel", domain="cives.com", country="united states",
+                              industry="steel", is_public=False)
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="clean", score=8)
+
+
+def _client(tmp_path):
+    deps = Deps(search=FakeSearch(), llm=FakeLLM(), cache_path=tmp_path / "db.sqlite",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    return TestClient(create_app(deps))
+
+
+def test_project_and_vendor_crud(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "Bridge job"}).json()["id"]
+    assert any(p["id"] == pid for p in client.get("/projects").json())
+
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+    detail = client.get(f"/projects/{pid}").json()
+    assert detail["vendors"][0]["vendor_id"] == vid
+    assert detail["vendors"][0]["generated"] is False   # no report yet
+
+    client.delete(f"/vendors/{vid}")
+    assert client.get(f"/projects/{pid}").json()["vendors"] == []
+
+
+def test_report_read_model_empty_before_generation(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+    report = client.get(f"/vendors/{vid}/report").json()
+    assert report["generated"] is False and report["sections"] == []
+
+
+def test_missing_project_and_vendor_return_404(tmp_path):
+    client = _client(tmp_path)
+    assert client.get("/projects/9999").status_code == 404
+    assert client.get("/vendors/9999/report").status_code == 404
