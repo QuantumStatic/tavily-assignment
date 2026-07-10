@@ -63,3 +63,9 @@ test('does not render an anchor for an unsafe URL scheme', () => {
   expect(screen.queryByRole('link', { name: /evil/i })).not.toBeInTheDocument()
   expect(screen.getByText(/evil/i)).toBeInTheDocument()
 })
+
+test('verdict pill uses the score band, not always green', () => {
+  render(<ReportPanel row={{ ...row, verdict: { score: 2 } }} onClose={() => {}} />)
+  const pill = screen.getByText('2/10')
+  expect(pill.className).toMatch(/\bbad\b/)
+})
