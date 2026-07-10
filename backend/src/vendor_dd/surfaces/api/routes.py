@@ -80,7 +80,10 @@ def add_vendor(project_id: int, body: VendorIn, request: Request):
 
 @router.delete("/vendors/{vendor_id}")
 def remove_vendor(vendor_id: int, request: Request):
-    _store(request).remove_vendor(vendor_id)
+    store = _store(request)
+    if store.get_vendor(vendor_id) is None:
+        raise HTTPException(status_code=404, detail="vendor not found")
+    store.remove_vendor(vendor_id)
     return {"ok": True}
 
 
