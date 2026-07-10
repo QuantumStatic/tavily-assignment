@@ -30,3 +30,6 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 .new-project { margin-top: 12px; }
 .new-project input { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.add-vendor { display: flex; gap: 8px; }
+.add-vendor input { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; }
+.add-vendor button { padding: 6px 14px; border: 1px solid #b9d0ff; background: #e0ecff; border-radius: 6px; cursor: pointer; font-size: 13px; }
