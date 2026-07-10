@@ -17,6 +17,10 @@ _DEFAULT_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 def create_app(deps: Deps, *, cors_origins: list[str] | None = None) -> FastAPI:
     """Build the API around injected engine deps. Store + cache + engine share deps.cache_path."""
     app = FastAPI(title="Vendor Due-Diligence API")
+
+    from vendor_dd.surfaces.api.middleware import LoggingMiddleware
+    app.add_middleware(LoggingMiddleware)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins or _DEFAULT_ORIGINS,
@@ -35,6 +39,9 @@ def build_app() -> FastAPI:
     from vendor_dd.engine.backlog import fetch_transcript_text
     from vendor_dd.engine.llm import NebiusLLM
     from vendor_dd.engine.tavily_client import TavilySearchClient
+    from vendor_dd.logs import configure_logging
+
+    configure_logging()
 
     # app.py is backend/src/vendor_dd/surfaces/api/app.py, so parents[5] == project root
     # (where .env lives, one level above backend/).

@@ -169,3 +169,30 @@ def test_stream_uses_project_session_id(tmp_path):
     sid = app.state.store.get_project(pid).session_id
     assert sid and search.calls
     assert all(c.get("session_id") == sid for c in search.calls)
+
+
+def test_http_middleware_logs_request_and_response(tmp_path):
+    import json
+    from vendor_dd.logs import configure_logging
+    configure_logging(tmp_path / "logs", level="INFO")
+    client = _client(tmp_path)
+    client.post("/projects", json={"name": "p"})
+    lines = [json.loads(l) for l in (tmp_path / "logs" / "http.log").read_text().splitlines() if l.strip()]
+    events = [o["event"] for o in lines]
+    assert "http.request" in events and "http.response" in events
+    resp = next(o for o in lines if o["event"] == "http.response")
+    assert resp["payload"]["status"] == 200 and "latency_ms" in resp["payload"]
+
+
+def test_http_middleware_does_not_buffer_the_sse_stream(tmp_path):
+    import json
+    from vendor_dd.logs import configure_logging
+    configure_logging(tmp_path / "logs", level="INFO")
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+    with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+        "".join(resp.iter_text())
+    lines = [json.loads(l) for l in (tmp_path / "logs" / "http.log").read_text().splitlines() if l.strip()]
+    stream_resp = [o for o in lines if o["event"] == "http.response" and "/report/stream" in o["payload"]["path"]]
+    assert stream_resp and stream_resp[-1]["payload"].get("body") in (None, "<streaming>")
