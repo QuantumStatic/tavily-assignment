@@ -2,7 +2,7 @@ import json
 
 from pydantic import BaseModel
 
-from vendor_dd.engine.llm import NebiusLLM, _coerce_null_strings, _nullable_keys, _to_strict_schema
+from vendor_dd.engine.llm import LLMError, NebiusLLM, _coerce_null_strings, _nullable_keys, _to_strict_schema
 from vendor_dd.engine.schemas import Citation, Dimension, EntityCard, Finding, Section, SourceType
 
 
@@ -155,3 +155,42 @@ def test_structured_logs_request_and_response_without_secrets(tmp_path, monkeypa
     assert "secret-key-xyz" not in blob   # api key never logged
     req = next(o for o in lines if o["event"] == "llm.request")
     assert req["payload"]["model"] == "test-model"
+
+
+import pytest
+
+
+class _BadClient:
+    def __init__(self, resp):
+        self._resp = resp
+        self.chat = self
+    @property
+    def completions(self):
+        return self
+    def create(self, **kwargs):
+        return self._resp
+
+
+def _resp(content):
+    msg = type("M", (), {"content": content})()
+    choice = type("C", (), {"message": msg})()
+    return type("R", (), {"choices": [choice]})()
+
+
+def test_none_content_raises_clear_llm_error():
+    llm = NebiusLLM(model="m", client=_BadClient(_resp(None)))
+    with pytest.raises(LLMError):
+        llm.structured("p", Section)
+
+
+def test_empty_choices_raises_clear_llm_error():
+    empty = type("R", (), {"choices": []})()
+    llm = NebiusLLM(model="m", client=_BadClient(empty))
+    with pytest.raises(LLMError):
+        llm.structured("p", Section)
+
+
+def test_malformed_json_raises_clear_llm_error():
+    llm = NebiusLLM(model="m", client=_BadClient(_resp("{not json")))
+    with pytest.raises(LLMError):
+        llm.structured("p", Section)
