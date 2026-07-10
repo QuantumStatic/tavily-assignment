@@ -160,3 +160,57 @@ def test_iter_events_closes_cache_when_generator_abandoned(tmp_path):
     fresh = SQLiteCache(tmp_path / "c.db")
     assert fresh.get("cives steel", Dimension.SNAPSHOT) is not None  # entity was cached before abandonment
     fresh.close()
+
+
+class RecordingSearch:
+    """Like StatelessSearch but records every search call's kwargs."""
+
+    def __init__(self):
+        self.calls = []
+
+    def search(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"results": [{"title": "Cives Steel news", "content": "Cives Steel Company",
+                             "url": "https://x.com", "score": 0.8}]}
+
+
+class PublicEntityRecordingLLM:
+    """Resolves a public entity (NYSE:BA) and records every prompt it receives."""
+
+    def __init__(self):
+        self.prompts = []
+
+    def structured(self, prompt, schema):
+        self.prompts.append(prompt)
+        if schema is EntityCard:
+            return EntityCard(name="Cives Steel", domain="cives.com", country="united states",
+                              industry="steel", is_public=True, ticker="BA", exchange="NYSE")
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="ok", score=7)
+
+
+def test_public_company_backlog_uses_transcript_not_search(tmp_path):
+    transcript = "transcript text " * 1000          # 16000 chars, > 6000 truncation limit
+    assert len(transcript) == 16000
+    search = RecordingSearch()
+    llm = PublicEntityRecordingLLM()
+    deps = Deps(search=search, llm=llm, cache_path=tmp_path / "c.db", today=date(2026, 7, 8),
+                fetch_transcript=lambda url: (transcript, "2026-04-16"))
+    events = list(ReportEngine(deps, mode="sequential").iter_events("Cives Steel"))
+
+    # backlog section completed successfully and the report finished
+    assert events[-1].type == "report_complete"
+    completed_dims = {e.section.dimension for e in events if e.type == "section_complete"}
+    assert Dimension.BACKLOG in completed_dims
+
+    # transcript path used, NOT the news-reuse/search fallback: exactly one search for
+    # entity resolution plus one per Tavily dimension -- no extra backlog/news re-fetch
+    assert len(search.calls) == 1 + len(
+        [d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)])
+
+    # the backlog synthesis prompt embeds the transcript truncated to 6000 chars
+    backlog_prompts = [p for p in llm.prompts if "backlog" in p]
+    assert len(backlog_prompts) == 1
+    prompt = backlog_prompts[0]
+    assert "Earnings call transcript" in prompt
+    assert transcript[:6000] in prompt        # first 6000 chars present...
+    assert transcript not in prompt           # ...but the full 16000-char text is not
