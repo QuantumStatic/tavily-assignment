@@ -27,9 +27,11 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
     Dimension.SAFETY: DimensionConfig(
         "{name} product recall safety defect investigation", "general", "advanced",
         20, 730, True, True),
-    # finance topic already scopes to financial coverage — no keyword stuffing needed.
+    # NOT topic="finance": like the news topic, it returns broad market noise for a
+    # low-coverage vendor (verified: 2/11 mention Voith). The general topic does real
+    # keyword relevance — "{name} revenue financial results" returns 16/16 on-topic.
     Dimension.FINANCIAL: DimensionConfig(
-        "{name}", "finance", "advanced",
+        "{name} revenue financial results", "general", "advanced",
         20, 365, False, True),
     Dimension.BACKLOG: DimensionConfig(
         "{name} backlog order book project pipeline", "finance", "advanced",
