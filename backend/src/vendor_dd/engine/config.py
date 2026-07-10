@@ -28,8 +28,9 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
     Dimension.SAFETY: DimensionConfig(
         "{name} product recall safety defect investigation", "general", "advanced",
         20, 730, True, False, True),
+    # finance topic already scopes to financial coverage — no keyword stuffing needed.
     Dimension.FINANCIAL: DimensionConfig(
-        "{name} layoffs bankruptcy financial trouble downgrade", "finance", "advanced",
+        "{name}", "finance", "advanced",
         20, 365, False, False, True),
     Dimension.BACKLOG: DimensionConfig(
         "{name} backlog order book project pipeline", "finance", "advanced",
@@ -37,11 +38,10 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
     Dimension.CERTIFICATIONS: DimensionConfig(
         "{name} ISO AISC certification compliance quality", "general", "advanced",
         20, None, True, True, False),
-    Dimension.NEWS_POSITIVE: DimensionConfig(
-        "{name} contract award partnership expansion", "news", "advanced",
-        20, 90, False, False, True),
-    Dimension.NEWS_NEGATIVE: DimensionConfig(
-        "{name} controversy incident dispute closure", "news", "advanced",
+    # news topic + recency does the scoping; one news search (the LLM weighs positive
+    # vs adverse coverage in the section, no positive/negative query split).
+    Dimension.NEWS: DimensionConfig(
+        "{name}", "news", "advanced",
         20, 90, False, False, True),
 }
 
@@ -53,6 +53,5 @@ TTL: dict[Dimension, timedelta] = {
     Dimension.BACKLOG: timedelta(days=7),
     Dimension.LEGAL: timedelta(days=3),
     Dimension.SAFETY: timedelta(days=3),
-    Dimension.NEWS_POSITIVE: timedelta(days=1),
-    Dimension.NEWS_NEGATIVE: timedelta(days=1),
+    Dimension.NEWS: timedelta(days=1),
 }

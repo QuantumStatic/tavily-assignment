@@ -21,7 +21,7 @@ def test_legal_kwargs_use_country_and_exclude_own_domain():
 
 
 def test_news_kwargs_use_news_topic_no_country_90d_window():
-    kw = build_search_kwargs(Dimension.NEWS_POSITIVE, _entity(), today=date(2026, 7, 8))
+    kw = build_search_kwargs(Dimension.NEWS, _entity(), today=date(2026, 7, 8))
     assert kw["topic"] == "news"
     assert "country" not in kw                        # incompatible with news
     assert kw["start_date"] == "2026-04-09"           # today - 90 days
@@ -32,7 +32,7 @@ def test_country_is_not_injected_into_query_text():
     baked into the query (it would exclude non-domestic news)."""
     e = EntityCard(name="Voith", search_name="Voith", domain="voith.com", country="germany")
     for dim in (Dimension.FINANCIAL, Dimension.BACKLOG,
-                Dimension.NEWS_POSITIVE, Dimension.NEWS_NEGATIVE):
+                Dimension.NEWS):
         q = build_search_kwargs(dim, e, today=date(2026, 7, 8))["query"]
         assert "germany" not in q.lower(), f"{dim.value}: {q!r}"
 
@@ -54,7 +54,7 @@ def test_queries_and_filter_use_the_common_search_name_not_the_legal_name():
                                  "content": "Voith Hydro announced", "url": "https://n.com/x",
                                  "score": 0.7}]}
 
-    kept = retrieve_dimension(Dimension.NEWS_POSITIVE, voith, search=_Search(), today=date(2026, 7, 8))
+    kept = retrieve_dimension(Dimension.NEWS, voith, search=_Search(), today=date(2026, 7, 8))
     assert len(kept) == 1
 
 
@@ -84,7 +84,7 @@ def test_news_keeps_entity_named_results_regardless_of_score():
     is dropped."""
     voith = EntityCard(name="Voith Hydro Holding GmbH & Co. KG", search_name="Voith",
                        domain="voith.com", country="germany")
-    kept = retrieve_dimension(Dimension.NEWS_POSITIVE, voith,
+    kept = retrieve_dimension(Dimension.NEWS, voith,
                               search=FakeLowScoreNewsSearch(), today=date(2026, 7, 8))
     urls = [r["url"] for r in kept]
     assert urls == ["https://news.com/voith"]   # only the one that actually names Voith survives

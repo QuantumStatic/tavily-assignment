@@ -177,7 +177,7 @@ test('selecting a partially-generated vendor shows a still-generating note inste
       id: 1, name: 'Bridge job', created_at: 't',
       vendors: [{
         vendor_id: 9, name: 'Cives Steel', vendor_key: 'cives-steel', generated: true,
-        sections_present: 2, sections_expected: 7,
+        sections_present: 2, sections_expected: 6,
         verdict_score: null, verdict_reasoning: null,
         dimensions: [{ dimension: 'legal', score: 8, as_of: '2026-06' }],
       }],
@@ -190,7 +190,7 @@ test('selecting a partially-generated vendor shows a still-generating note inste
       generated: true, vendor_key: 'cives-steel', entity: null,
       verdict_score: null, verdict_reasoning: null,
       sections: [{ dimension: 'legal', score: 8, reasoning: 'clean', findings: [] }],
-      sections_present: 2, sections_expected: 7,
+      sections_present: 2, sections_expected: 6,
     },
   }
   mockApi({ projects, projectDetails, vendorReports })
@@ -200,7 +200,7 @@ test('selecting a partially-generated vendor shows a still-generating note inste
   const row = await screen.findByText('Cives Steel')
   await userEvent.click(row)
 
-  await screen.findByText(/2 of 7/i)
+  await screen.findByText(/2 of 6/i)
   expect(screen.queryByText(/generating report…/i)).not.toBeInTheDocument()
 })
 

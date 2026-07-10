@@ -76,7 +76,7 @@ def test_entity_resolution_is_cached_across_run_report_calls(tmp_path):
     assert search.call_count == search_calls_after_first
 
 
-def test_backlog_reuses_news_positive_results_for_private_vendor(tmp_path):
+def test_backlog_reuses_news_results_for_private_vendor(tmp_path):
     search = CountingSearch()
     llm = CountingLLM()
     cache_path = tmp_path / "c.db"
@@ -86,7 +86,7 @@ def test_backlog_reuses_news_positive_results_for_private_vendor(tmp_path):
     run_report("Cives Steel", deps)
 
     # one search call for entity resolution + one per Tavily-backed dimension
-    # (NEWS_POSITIVE's results are reused for BACKLOG instead of triggering a second
+    # (NEWS results are reused for BACKLOG instead of triggering a second
     # identical search call).
     expected_calls = 1 + len(
         [d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)]

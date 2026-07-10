@@ -10,10 +10,15 @@ def test_every_dimension_has_config():
 
 
 def test_news_uses_news_topic_and_90d_window():
-    for dim in (Dimension.NEWS_POSITIVE, Dimension.NEWS_NEGATIVE):
-        cfg = DIMENSION_CONFIGS[dim]
-        assert cfg.topic == "news"
-        assert cfg.recency_days == 90
+    cfg = DIMENSION_CONFIGS[Dimension.NEWS]
+    assert cfg.topic == "news"
+    assert cfg.recency_days == 90
+
+
+def test_topic_scoped_dimensions_drop_keyword_stuffing():
+    # finance/news topics scope the search themselves — the query is just the name.
+    assert DIMENSION_CONFIGS[Dimension.FINANCIAL].query_template == "{name}"
+    assert DIMENSION_CONFIGS[Dimension.NEWS].query_template == "{name}"
 
 
 def test_financial_and_backlog_use_finance_topic():
@@ -36,5 +41,5 @@ def test_certifications_includes_own_domain_others_exclude():
 def test_ttl_covers_all_section_types():
     for dim in Dimension:
         assert dim in TTL
-    assert TTL[Dimension.NEWS_POSITIVE] == timedelta(days=1)
+    assert TTL[Dimension.NEWS] == timedelta(days=1)
     assert TTL[Dimension.SNAPSHOT] == timedelta(days=30)

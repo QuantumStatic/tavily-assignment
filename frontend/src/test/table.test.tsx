@@ -7,14 +7,14 @@ import type { VendorSummary } from '../types'
 
 const summary = (over: Partial<VendorSummary>): VendorSummary => ({
   vendor_id: 1, name: 'Cives', vendor_key: 'cives.com', generated: false,
-  sections_present: 0, sections_expected: 7,
+  sections_present: 0, sections_expected: 6,
   verdict_score: null, verdict_reasoning: null, dimensions: [], ...over,
 })
 
 test('renders a header per dimension plus vendor + verdict', () => {
   render(<VendorTable rows={[]} onSelect={() => {}} onDelete={() => {}} />)
   expect(screen.getByText('Legal')).toBeInTheDocument()
-  expect(screen.getByText('News +')).toBeInTheDocument()
+  expect(screen.getByText('News')).toBeInTheDocument()
   expect(screen.getByText('Verdict')).toBeInTheDocument()
 })
 
