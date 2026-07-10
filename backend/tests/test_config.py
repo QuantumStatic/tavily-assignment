@@ -18,13 +18,17 @@ def test_news_uses_general_topic_with_a_news_keyword_and_120d_window():
     assert cfg.exclude_own_domain is False   # a vendor's own press releases are news too
 
 
-def test_finance_dimension_drops_keyword_stuffing():
-    # finance topic scopes the search itself — the query is just the name.
-    assert DIMENSION_CONFIGS[Dimension.FINANCIAL].query_template == "{name}"
+def test_financial_uses_general_topic_with_financial_keywords():
+    # NOT the finance topic — like news, it returns broad market noise. general topic
+    # + financial keywords does real relevance matching.
+    cfg = DIMENSION_CONFIGS[Dimension.FINANCIAL]
+    assert cfg.topic == "general"
+    assert "financial" in cfg.query_template
 
 
-def test_financial_and_backlog_use_finance_topic():
-    assert DIMENSION_CONFIGS[Dimension.FINANCIAL].topic == "finance"
+def test_backlog_uses_finance_topic():
+    # backlog never runs its own Tavily search (transcript / news reuse), but its
+    # config topic stays finance for provenance.
     assert DIMENSION_CONFIGS[Dimension.BACKLOG].topic == "finance"
 
 
