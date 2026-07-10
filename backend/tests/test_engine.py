@@ -105,3 +105,44 @@ def test_run_report_shim_still_returns_report(tmp_path):
     report = run_report("Cives Steel", _deps(tmp_path))
     assert isinstance(report, Report)
     assert report.entity.domain == "cives.com"
+
+
+class EntityResolutionFailsLLM:
+    def structured(self, prompt, schema):
+        if schema is EntityCard:
+            raise RuntimeError("entity resolution boom")
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="ok", score=7)
+
+
+def test_entity_resolution_failure_yields_report_error_and_stops(tmp_path):
+    from vendor_dd.engine.events import ReportError
+    engine = ReportEngine(_deps(tmp_path, llm=EntityResolutionFailsLLM()), mode="sequential")
+    events = list(engine.iter_events("Cives Steel"))
+    assert len(events) == 1
+    assert isinstance(events[0], ReportError)
+    assert "entity resolution boom" in events[0].message
+
+
+class BacklogFailsLLM:
+    def structured(self, prompt, schema):
+        if schema is EntityCard:
+            return EntityCard(name="Cives Steel", domain="cives.com", country="united states",
+                              industry="steel", is_public=False)
+        if "backlog" in prompt:
+            raise RuntimeError("backlog boom")
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="ok", score=7)
+
+
+def test_backlog_failure_yields_report_error(tmp_path):
+    from vendor_dd.engine.events import ReportError
+    engine = ReportEngine(_deps(tmp_path, llm=BacklogFailsLLM()), mode="sequential")
+    events = list(engine.iter_events("Cives Steel"))
+    assert events[0].type == "entity_resolved"
+    assert len(events) == 8
+    completed = [e for e in events[1:7] if e.type == "section_complete"]
+    assert len(completed) == 6
+    dims = {e.section.dimension for e in completed}
+    assert dims == {d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)}
+    assert isinstance(events[-1], ReportError)
+    assert "backlog boom" in events[-1].message
+    assert not any(e.type == "report_complete" for e in events)
