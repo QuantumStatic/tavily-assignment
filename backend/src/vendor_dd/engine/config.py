@@ -14,35 +14,36 @@ class DimensionConfig:
     max_results: int
     recency_days: int | None   # None = no time filter; else start_date = today - N days
     use_country: bool          # pass Tavily's country param (general topic only)
-    include_own_domain: bool   # certs: self-reported is the answer
     exclude_own_domain: bool   # independent dims: force third-party sources
 
 
 DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
     Dimension.SNAPSHOT: DimensionConfig(
         "{name} company overview headquarters industry", "general", "advanced",
-        5, None, True, False, False),
+        5, None, True, False),
     Dimension.LEGAL: DimensionConfig(
         "{name} lawsuit litigation legal action", "general", "advanced",
-        20, 730, True, False, True),
+        20, 730, True, True),
     Dimension.SAFETY: DimensionConfig(
         "{name} product recall safety defect investigation", "general", "advanced",
-        20, 730, True, False, True),
+        20, 730, True, True),
     # finance topic already scopes to financial coverage — no keyword stuffing needed.
     Dimension.FINANCIAL: DimensionConfig(
         "{name}", "finance", "advanced",
-        20, 365, False, False, True),
+        20, 365, False, True),
     Dimension.BACKLOG: DimensionConfig(
         "{name} backlog order book project pipeline", "finance", "advanced",
-        20, 365, False, False, False),
+        20, 365, False, False),
+    # No domain restriction: certs can come from the vendor's own site OR independent
+    # registrar/registry listings (an independent listing is stronger corroboration).
     Dimension.CERTIFICATIONS: DimensionConfig(
         "{name} ISO AISC certification compliance quality", "general", "advanced",
-        20, None, True, True, False),
+        20, None, True, False),
     # news topic + recency does the scoping; one news search (the LLM weighs positive
     # vs adverse coverage in the section, no positive/negative query split).
     Dimension.NEWS: DimensionConfig(
         "{name}", "news", "advanced",
-        20, 90, False, False, True),
+        20, 90, False, True),
 }
 
 # TTL policy lives in code, not in the cache row (tunable without migration).

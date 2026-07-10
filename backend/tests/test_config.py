@@ -33,9 +33,11 @@ def test_country_only_on_general_topics():
             assert cfg.topic == "general", f"{dim} uses country but topic={cfg.topic}"
 
 
-def test_certifications_includes_own_domain_others_exclude():
-    assert DIMENSION_CONFIGS[Dimension.CERTIFICATIONS].include_own_domain is True
+def test_independent_dims_exclude_own_domain_certs_do_not_restrict():
     assert DIMENSION_CONFIGS[Dimension.LEGAL].exclude_own_domain is True
+    # certs are unrestricted: neither forced to nor away from the vendor's own domain,
+    # so independent registrar listings can corroborate self-reported certs.
+    assert DIMENSION_CONFIGS[Dimension.CERTIFICATIONS].exclude_own_domain is False
 
 
 def test_ttl_covers_all_section_types():
