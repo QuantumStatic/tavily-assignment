@@ -21,9 +21,10 @@ def build_search_kwargs(dim: Dimension, entity: EntityCard, *, today: date) -> d
     """Translate a dimension + entity card into Tavily search params (docs-backed)."""
     cfg = DIMENSION_CONFIGS[dim]
     # Search on the common press name, never the full legal name — no article says
-    # "Voith Hydro Holding GmbH & Co. KG", so quoting it returns zero hits.
-    search_name = entity.search_name or entity.name
-    name = f'"{search_name}"' if cfg.exact_match else search_name
+    # "Voith Hydro Holding GmbH & Co. KG". No quotes either: exact-phrase matching is
+    # too brittle (a suffix like "GmbH" then returns nothing); we let Tavily rank
+    # loosely and gate on entity-name presence in the filter instead.
+    name = entity.search_name or entity.name
     # No country in the query text: an international vendor's coverage is worldwide, so
     # "Voith Germany ..." would exclude its non-German news. General dims still scope
     # geography via Tavily's country param below.

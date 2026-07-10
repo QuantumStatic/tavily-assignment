@@ -9,11 +9,12 @@ def _entity():
                       industry="steel", is_public=False)
 
 
-def test_legal_kwargs_use_country_exact_match_and_exclude_own_domain():
+def test_legal_kwargs_use_country_and_exclude_own_domain():
     kw = build_search_kwargs(Dimension.LEGAL, _entity(), today=date(2026, 7, 8))
     assert kw["topic"] == "general"
     assert kw["country"] == "united states"
-    assert '"Cives Steel"' in kw["query"]            # exact_match wraps the name
+    assert "Cives Steel" in kw["query"]              # bare name, no quotes
+    assert '"' not in kw["query"]                    # exact-phrase quoting removed
     assert kw["exclude_domains"] == ["cives.com"]
     assert kw["start_date"] == "2024-07-08"          # today - 730 days
     assert "country" in kw
@@ -37,14 +38,13 @@ def test_country_is_not_injected_into_query_text():
 
 
 def test_queries_and_filter_use_the_common_search_name_not_the_legal_name():
-    """Regression: quoting the full legal name (e.g. "Voith Hydro Holding GmbH & Co. KG")
-    returns zero hits because no article writes it. Queries and the entity filter must use
-    the short press name instead."""
+    """Regression: the full legal name (e.g. "Voith Hydro Holding GmbH & Co. KG") appears
+    in no article. Queries and the entity filter must use the short press name instead."""
     voith = EntityCard(name="Voith Hydro Holding GmbH & Co. KG", search_name="Voith Hydro",
                        domain="voith.com", country="germany", is_public=False)
 
     kw = build_search_kwargs(Dimension.LEGAL, voith, today=date(2026, 7, 8))
-    assert '"Voith Hydro"' in kw["query"]                       # short name, quoted
+    assert "Voith Hydro" in kw["query"]                         # short press name
     assert "Holding GmbH" not in kw["query"]                    # never the legal suffix
 
     # A real article says "Voith Hydro", not the legal name — it must survive the filter.
@@ -61,7 +61,7 @@ def test_queries_and_filter_use_the_common_search_name_not_the_legal_name():
 def test_search_name_falls_back_to_legal_name_when_absent():
     e = EntityCard(name="Cives Steel", domain="cives.com", country="united states")
     kw = build_search_kwargs(Dimension.LEGAL, e, today=date(2026, 7, 8))
-    assert '"Cives Steel"' in kw["query"]                       # no search_name -> use name
+    assert "Cives Steel" in kw["query"]                         # no search_name -> use name
 
 
 class FakeLowScoreNewsSearch:
@@ -78,24 +78,16 @@ class FakeLowScoreNewsSearch:
         ]}
 
 
-def test_news_keeps_low_scored_but_entity_named_results():
-    """Regression: the global 0.40 floor nuked every news hit (news scores ~0.05-0.12),
-    dropping genuine coverage. News gates on entity-name presence, not score."""
+def test_news_keeps_entity_named_results_regardless_of_score():
+    """The filter gates on entity-name presence, not Tavily's (unreliable) score — so a
+    genuine low-scored hit survives and higher-scored noise that never names the company
+    is dropped."""
     voith = EntityCard(name="Voith Hydro Holding GmbH & Co. KG", search_name="Voith",
                        domain="voith.com", country="germany")
     kept = retrieve_dimension(Dimension.NEWS_POSITIVE, voith,
                               search=FakeLowScoreNewsSearch(), today=date(2026, 7, 8))
     urls = [r["url"] for r in kept]
     assert urls == ["https://news.com/voith"]   # only the one that actually names Voith survives
-
-
-def test_non_news_dimensions_still_enforce_the_high_score_floor():
-    """The low news floor must not leak into general/finance dims."""
-    from vendor_dd.engine.config import DIMENSION_CONFIGS, SCORE_THRESHOLD, NEWS_SCORE_THRESHOLD
-    assert DIMENSION_CONFIGS[Dimension.LEGAL].score_threshold == SCORE_THRESHOLD
-    assert DIMENSION_CONFIGS[Dimension.FINANCIAL].score_threshold == SCORE_THRESHOLD
-    assert DIMENSION_CONFIGS[Dimension.NEWS_POSITIVE].score_threshold == NEWS_SCORE_THRESHOLD
-    assert DIMENSION_CONFIGS[Dimension.NEWS_NEGATIVE].score_threshold == NEWS_SCORE_THRESHOLD
 
 
 def test_certifications_include_own_domain():

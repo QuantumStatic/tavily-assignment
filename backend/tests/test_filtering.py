@@ -5,15 +5,12 @@ def _result(score=0.9, title="Cives Steel wins award", content="Cives Steel Comp
     return {"score": score, "title": title, "content": content, "url": "https://x.com"}
 
 
-def test_low_score_is_dropped():
-    assert passes_filter(_result(score=0.2), entity_name="Cives Steel") is False
+def test_result_that_names_the_entity_passes_regardless_of_score():
+    assert passes_filter(_result(score=0.05), entity_name="Cives Steel") is True
+    assert passes_filter(_result(score=0.9), entity_name="Cives Steel") is True
 
 
-def test_high_score_with_entity_mention_passes():
-    assert passes_filter(_result(score=0.7), entity_name="Cives Steel") is True
-
-
-def test_entity_not_mentioned_is_dropped_even_if_high_score():
+def test_entity_not_mentioned_is_dropped_even_with_high_score():
     r = _result(score=0.9, title="U.S. Steel EEOC lawsuit", content="U.S. Steel violated ...")
     assert passes_filter(r, entity_name="Cives Steel") is False
 
