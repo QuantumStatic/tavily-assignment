@@ -18,9 +18,9 @@ export function VendorRow({
       }}
     >
       <td className="vendor-name">{row.name}</td>
-      <td className="cell">
+      <td className="cell verdict-cell">
         {verdict === 'idle' ? '—'
-          : verdict === 'pending' ? <span className="dot" />
+          : verdict === 'pending' ? <><span className="dot" /><span className="sr-only">pending</span></>
           : verdict === 'failed' ? <span className="failed">✗</span>
           : <span className={`pill ${bandForScore(verdict.score)}`}>
               {verdict.score}/10

@@ -173,7 +173,18 @@ export default function App() {
       />
       <main className="main">
         <div className="main-header">
-          {error && <div className="error-banner" onClick={() => setError(null)}>{error}</div>}
+          {error && (
+            <div className="error-banner" role="alert" onClick={() => setError(null)}>
+              <span>{error}</span>
+              <button
+                className="link-btn"
+                aria-label="Dismiss error"
+                onClick={(e) => { e.stopPropagation(); setError(null) }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <ThemeToggle theme={theme} onToggle={toggleTheme} />
         </div>
         {activeProject ? (
@@ -185,7 +196,7 @@ export default function App() {
             <VendorTable rows={sortedRows} onSelect={selectVendor} onDelete={removeVendor} />
           </>
         ) : (
-          <p className="empty">Create a project to begin.</p>
+          <p className="empty">Select a project, or create one to begin.</p>
         )}
       </main>
       {selectedRow && <ReportPanel row={selectedRow} onClose={() => setSelectedVendorId(null)} />}
