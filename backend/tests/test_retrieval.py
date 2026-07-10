@@ -20,13 +20,13 @@ def test_legal_kwargs_use_country_and_exclude_own_domain():
     assert "country" in kw
 
 
-def test_news_kwargs_use_general_topic_with_news_keyword_120d_window():
+def test_news_kwargs_use_general_topic_with_news_keyword_and_no_recency():
     kw = build_search_kwargs(Dimension.NEWS, _entity(), today=date(2026, 7, 8))
     assert kw["topic"] == "general"                   # news topic returns broad noise
     assert kw["query"].endswith("news")               # "{name} news"
     assert "country" not in kw                        # use_country stays off for news
     assert "exclude_domains" not in kw                # own press releases are news too
-    assert kw["start_date"] == (date(2026, 7, 8) - timedelta(days=120)).isoformat()
+    assert "start_date" not in kw                     # no recency filter (drops undated results)
 
 
 def test_country_is_not_injected_into_query_text():

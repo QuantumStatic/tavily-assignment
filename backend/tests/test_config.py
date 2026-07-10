@@ -9,12 +9,14 @@ def test_every_dimension_has_config():
         assert isinstance(DIMENSION_CONFIGS[dim], DimensionConfig)
 
 
-def test_news_uses_general_topic_with_a_news_keyword_and_120d_window():
+def test_news_uses_general_topic_with_a_news_keyword_and_no_recency_window():
     # NOT the news topic — it returns recency-broad noise for low-coverage vendors.
     cfg = DIMENSION_CONFIGS[Dimension.NEWS]
     assert cfg.topic == "general"
     assert cfg.query_templates[0] == "{name} news"
-    assert cfg.recency_days == 120
+    # no start_date: Tavily's recency filter silently drops undated results (0 news for
+    # some vendors). Recency lives in the citation as_of dates instead.
+    assert cfg.recency_days is None
     assert cfg.exclude_own_domain is False   # a vendor's own press releases are news too
 
 
