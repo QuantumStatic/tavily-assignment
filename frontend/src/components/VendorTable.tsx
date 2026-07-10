@@ -1,6 +1,12 @@
 import type { RowState } from '../rows'
-import { DIMENSIONS } from '../dimensions'
+import { DIMENSIONS, VERDICT_HELP } from '../dimensions'
 import { VendorRow } from './VendorRow'
+
+function HelpBadge({ text }: { text: string }) {
+  return (
+    <span className="col-help" tabIndex={0} role="img" title={text} aria-label={text}>?</span>
+  )
+}
 
 export function VendorTable({
   rows, onSelect, onDelete,
@@ -10,9 +16,13 @@ export function VendorTable({
       <table className="vendor-table">
         <thead>
           <tr>
-            <th scope="col">Vendor</th>
-            <th scope="col">Verdict</th>
-            {DIMENSIONS.map((d) => <th key={d.key} scope="col">{d.label}</th>)}
+            <th scope="col"><span className="col-label">Vendor</span></th>
+            <th scope="col"><span className="col-label">Verdict</span><HelpBadge text={VERDICT_HELP} /></th>
+            {DIMENSIONS.map((d) => (
+              <th key={d.key} scope="col">
+                <span className="col-label">{d.label}</span><HelpBadge text={d.help} />
+              </th>
+            ))}
             <th scope="col" aria-label="actions" />
           </tr>
         </thead>

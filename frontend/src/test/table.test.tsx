@@ -18,6 +18,15 @@ test('renders a header per dimension plus vendor + verdict', () => {
   expect(screen.getByText('Verdict')).toBeInTheDocument()
 })
 
+test('each dimension header has a help badge explaining it and the score direction', () => {
+  render(<VendorTable rows={[]} onSelect={() => {}} onDelete={() => {}} />)
+  const legalHelp = screen.getByLabelText(/litigation, lawsuits/i)
+  expect(legalHelp).toHaveTextContent('?')
+  expect(legalHelp).toHaveAttribute('title', expect.stringMatching(/10 = clean record; 0 = serious/i))
+  // verdict column explains the overall score direction too
+  expect(screen.getByLabelText(/overall due-diligence score/i)).toBeInTheDocument()
+})
+
 test('renders a scored row and fires onSelect on click', async () => {
   const row = rowFromSummary(summary({
     generated: true, verdict_score: 7,
