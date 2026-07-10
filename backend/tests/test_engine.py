@@ -120,7 +120,7 @@ def test_entity_resolution_failure_yields_report_error_and_stops(tmp_path):
     events = list(engine.iter_events("Cives Steel"))
     assert len(events) == 1
     assert isinstance(events[0], ReportError)
-    assert "entity resolution boom" in events[0].message
+    assert events[0].message == "report could not be generated"
 
 
 class BacklogFailsLLM:
@@ -144,7 +144,7 @@ def test_backlog_failure_yields_report_error(tmp_path):
     dims = {e.section.dimension for e in completed}
     assert dims == {d for d in Dimension if d not in (Dimension.SNAPSHOT, Dimension.BACKLOG)}
     assert isinstance(events[-1], ReportError)
-    assert "backlog boom" in events[-1].message
+    assert events[-1].message == "report could not be generated"
     assert not any(e.type == "report_complete" for e in events)
 
 
@@ -233,3 +233,16 @@ def test_no_session_id_leaves_search_kwargs_untouched(tmp_path):
     ReportEngine(deps, mode="sequential").run_report("Cives Steel")   # no session_id
     assert search.calls
     assert all("session_id" not in c for c in search.calls)
+
+
+def test_section_error_message_is_generic_but_logged(tmp_path):
+    import json
+    from vendor_dd.logs import configure_logging
+    configure_logging(tmp_path / "logs", level="INFO")
+    engine = ReportEngine(_deps(tmp_path, llm=OneDimFailsLLM()), mode="sequential")
+    events = list(engine.iter_events("Cives Steel"))
+    err = next(e for e in events if e.type == "section_error")
+    assert "boom" not in err.message                      # raw exception text not surfaced
+    assert err.dimension is Dimension.FINANCIAL
+    lines = (tmp_path / "logs" / "general.log").read_text()
+    assert "boom" in lines                                # ...but the detail IS logged server-side

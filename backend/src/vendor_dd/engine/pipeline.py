@@ -95,7 +95,7 @@ class ReportEngine:
                 entity = self._resolve_entity_cached(vendor, cache)
             except Exception as exc:  # fatal: no entity to build a report around
                 _LOG.error("report.error", extra={"payload": {"stage": "entity", "error": str(exc)}})
-                yield ReportError(message=str(exc))
+                yield ReportError(message="report could not be generated")
                 return
             yield EntityResolved(entity=entity)
 
@@ -121,7 +121,7 @@ class ReportEngine:
                         outcome = fut.result()
                     except Exception as exc:  # one dimension failed; the report goes on without it
                         _LOG.error("section.error", extra={"payload": {"dimension": dim.value, "error": str(exc)}})
-                        yield SectionError(dimension=dim, message=str(exc))
+                        yield SectionError(dimension=dim, message=f"{dim.value} lookup failed")
                         continue
                     cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
                               sources=outcome.raw_results)
@@ -135,7 +135,7 @@ class ReportEngine:
                                                                  news_positive_results)
             except Exception as exc:  # fatal: report would be incomplete without backlog
                 _LOG.error("report.error", extra={"payload": {"stage": "backlog", "error": str(exc)}})
-                yield ReportError(message=str(exc))
+                yield ReportError(message="report could not be generated")
                 return
             sections.append(backlog)
             yield SectionComplete(section=backlog, cached=backlog_cached)
