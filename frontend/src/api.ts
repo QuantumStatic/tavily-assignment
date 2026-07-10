@@ -35,6 +35,11 @@ export const api = {
       method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ name }),
     }).then(json<VendorOut>),
   deleteVendor: (id: number) =>
-    fetch(`${BASE}/vendors/${id}`, { method: 'DELETE' }).then(ensureOk).then(() => undefined),
+    fetch(`${BASE}/vendors/${id}`, { method: 'DELETE' }).then((r) => {
+      // 404 means it's already gone server-side — that's the outcome we wanted, so
+      // succeed and let the caller drop the row rather than stranding it in the UI.
+      if (r.status === 404) return undefined
+      return ensureOk(r).then(() => undefined)
+    }),
   getReport: (id: number) => fetch(`${BASE}/vendors/${id}/report`).then(json<VendorReport>),
 }

@@ -285,6 +285,23 @@ test('a failed vendor deletion surfaces an error and keeps the row', async () =>
   expect(document.querySelector('.error-banner')).toBeNull()
 })
 
+test('deleting a vendor that is already gone (404) still removes the row, no error', async () => {
+  mockApi({
+    deleteVendor: () => ({ ok: false, status: 404, json: async () => ({ detail: 'vendor not found' }) }),
+  })
+  render(<App />)
+
+  await screen.findByRole('heading', { name: 'Bridge job' })
+  await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
+  await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
+  await screen.findByText('Cives Steel')
+
+  await userEvent.click(screen.getByRole('button', { name: /delete vendor/i }))
+
+  await waitFor(() => expect(screen.queryByText('Cives Steel')).not.toBeInTheDocument())
+  expect(document.querySelector('.error-banner')).toBeNull()
+})
+
 test('a vendor add that resolves after switching projects does not appear in the new project', async () => {
   const projects = [
     { id: 1, name: 'Bridge job', created_at: 't' },

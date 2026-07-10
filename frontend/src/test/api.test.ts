@@ -41,9 +41,16 @@ test('a non-ok response with no parseable body falls back to a generic message',
   await expect(api.getReport(9)).rejects.toThrow('request failed: 500')
 })
 
-test('deleteVendor rejects with the detail body on a non-ok response', async () => {
+test('deleteVendor treats a 404 as already-deleted and resolves', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
     ok: false, status: 404, json: async () => ({ detail: 'vendor not found' }),
   }))
-  await expect(api.deleteVendor(9)).rejects.toThrow('vendor not found')
+  await expect(api.deleteVendor(9)).resolves.toBeUndefined()
+})
+
+test('deleteVendor rejects with the detail body on a real server error', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: false, status: 500, json: async () => ({ detail: 'boom' }),
+  }))
+  await expect(api.deleteVendor(9)).rejects.toThrow('boom')
 })
