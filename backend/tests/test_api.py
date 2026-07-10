@@ -143,3 +143,29 @@ def test_stream_emits_section_error_and_still_completes(tmp_path):
     assert report["generated"] is True
     assert len(report["sections"]) == 6
     assert "financial" not in {s["dimension"] for s in report["sections"]}
+
+
+def test_stream_uses_project_session_id(tmp_path):
+    # A recording search lets us assert the project's session_id reached Tavily.
+    class RecordingSearch:
+        def __init__(self):
+            self.calls = []
+        def search(self, **kwargs):
+            self.calls.append(kwargs)
+            return {"results": [{"title": "x", "content": "Cives Steel Company",
+                                 "url": "https://x.com", "score": 0.8}]}
+
+    search = RecordingSearch()
+    deps = Deps(search=search, llm=FakeLLM(), cache_path=tmp_path / "db.sqlite",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    app = create_app(deps)
+    client = TestClient(app)
+
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+    with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+        "".join(resp.iter_text())
+
+    sid = app.state.store.get_project(pid).session_id
+    assert sid and search.calls
+    assert all(c.get("session_id") == sid for c in search.calls)

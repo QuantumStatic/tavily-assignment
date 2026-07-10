@@ -122,7 +122,9 @@ def stream_report(vendor_id: int, request: Request):
     vendor = store.get_vendor(vendor_id)
     if vendor is None:
         raise HTTPException(status_code=404, detail="vendor not found")
-    engine = ReportEngine(request.app.state.deps, mode="parallel")
+    project = store.get_project(vendor.project_id)
+    session_id = project.session_id if project else None
+    engine = ReportEngine(request.app.state.deps, mode="parallel", session_id=session_id)
 
     def event_source():
         for ev in engine.iter_events(vendor.name):
