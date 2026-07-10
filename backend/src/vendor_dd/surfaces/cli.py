@@ -1,4 +1,3 @@
-# backend/src/vendor_dd/surfaces/cli.py
 from __future__ import annotations
 
 import os
@@ -12,18 +11,24 @@ from rich.panel import Panel
 from rich.table import Table
 
 from vendor_dd.engine.backlog import fetch_transcript_text
+from vendor_dd.engine.events import (
+    EntityResolved, ReportComplete, SectionComplete, SectionError,
+)
 from vendor_dd.engine.llm import NebiusLLM
-from vendor_dd.engine.pipeline import Deps, run_report
+from vendor_dd.engine.pipeline import Deps, ReportEngine
 from vendor_dd.engine.tavily_client import TavilySearchClient
 
-load_dotenv(Path(__file__).resolve().parents[3] / ".env")
+# .env lives at the project root (one level above backend/): cli.py is
+# backend/src/vendor_dd/surfaces/cli.py, so parents[4] == project root.
+# (This corrects a latent Phase 1 path that pointed at backend/.env.)
+load_dotenv(Path(__file__).resolve().parents[4] / ".env")
 app = typer.Typer(add_completion=False)
 console = Console()
 
 
 @app.command()
 def main(vendor: str) -> None:
-    """Generate a due-diligence report for VENDOR."""
+    """Generate a due-diligence report for VENDOR (streams sections as they complete)."""
     tavily_key, nebius_key = os.getenv("TAVILY_API_KEY"), os.getenv("NEBIUS_API_KEY")
     if not tavily_key or not nebius_key:
         console.print("[red]Set TAVILY_API_KEY and NEBIUS_API_KEY in .env[/red]")
@@ -36,15 +41,32 @@ def main(vendor: str) -> None:
         today=date.today(),
         fetch_transcript=fetch_transcript_text,
     )
-    with console.status(f"Researching {vendor}..."):
-        report = run_report(vendor, deps)
+    engine = ReportEngine(deps, mode="parallel")
 
-    e = report.entity
-    console.print(Panel.fit(
-        f"[bold]{e.name}[/bold]  ·  {e.industry or '?'}  ·  {e.country or '?'}  "
-        f"·  {'public ' + (e.ticker or '') if e.is_public else 'private'}",
-        title=f"Verdict {report.verdict_score}/10", border_style="cyan"))
-    console.print(report.verdict_reasoning + "\n")
+    report = None
+    with console.status(f"Researching {vendor}..."):
+        for ev in engine.iter_events(vendor):
+            if isinstance(ev, EntityResolved):
+                e = ev.entity
+                console.print(Panel.fit(
+                    f"[bold]{e.name}[/bold]  ·  {e.industry or '?'}  ·  {e.country or '?'}  "
+                    f"·  {'public ' + (e.ticker or '') if e.is_public else 'private'}",
+                    title="Entity", border_style="cyan"))
+            elif isinstance(ev, SectionComplete):
+                s = ev.section
+                tag = " [dim](cached)[/dim]" if ev.cached else ""
+                console.print(f"  ✓ {s.dimension.value}: {s.score}/10{tag}")
+            elif isinstance(ev, SectionError):
+                console.print(f"  [red]✗ {ev.dimension.value} failed: {ev.message}[/red]")
+            elif isinstance(ev, ReportComplete):
+                report = ev.report
+
+    if report is None:
+        console.print("[red]Report did not complete.[/red]")
+        raise typer.Exit(1)
+
+    console.print(Panel.fit(report.verdict_reasoning,
+                            title=f"Verdict {report.verdict_score}/10", border_style="cyan"))
 
     table = Table("Dimension", "Score", "Reasoning")
     for s in sorted(report.sections, key=lambda s: s.score):  # riskiest first
