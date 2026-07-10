@@ -134,3 +134,24 @@ def test_structured_with_nested_findings_round_trips():
         citation=Citation(url="https://x.com", title="X",
                           source_type=SourceType.INDEPENDENT, score=0.9, as_of=None),
     )]
+
+
+import json as _json
+
+
+def test_structured_logs_request_and_response_without_secrets(tmp_path, monkeypatch):
+    from vendor_dd.logs import configure_logging
+    monkeypatch.setenv("NEBIUS_API_KEY", "secret-key-xyz")
+    configure_logging(tmp_path, level="INFO")
+
+    fake_client = _RecordingClient({"dimension": "legal", "findings": [], "reasoning": "ok", "score": 8})
+    llm = NebiusLLM(model="test-model", client=fake_client, api_key="secret-key-xyz")
+    llm.structured("classify this", Section)
+
+    lines = [_json.loads(l) for l in (tmp_path / "llm.log").read_text().splitlines() if l.strip()]
+    events = [o["event"] for o in lines]
+    assert "llm.request" in events and "llm.response" in events
+    blob = (tmp_path / "llm.log").read_text()
+    assert "secret-key-xyz" not in blob   # api key never logged
+    req = next(o for o in lines if o["event"] == "llm.request")
+    assert req["payload"]["model"] == "test-model"

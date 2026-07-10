@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel
 
+from vendor_dd.logs import get_logger
+
 T = TypeVar("T", bound=BaseModel)
+
+_LOG = get_logger("llm")
 
 
 class LLMClient(Protocol):
@@ -62,6 +67,14 @@ def _coerce_null_strings(data: dict[str, Any], schema: dict[str, Any]) -> dict[s
     return data
 
 
+def _usage_dict(usage) -> dict[str, Any] | None:
+    try:
+        return {"prompt_tokens": usage.prompt_tokens, "completion_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens}
+    except Exception:
+        return None
+
+
 class NebiusLLM:
     """Nebius Token Factory structured-output client: the raw OpenAI SDK's
     chat.completions endpoint with native `response_format=json_schema` — no tool
@@ -94,6 +107,11 @@ class NebiusLLM:
 
     def structured(self, prompt: str, schema: type[T]) -> T:
         json_schema = _to_strict_schema(schema.model_json_schema())
+        _LOG.info("llm.request", extra={"payload": {
+            "model": self._model, "schema": schema.__name__,
+            "reasoning_effort": "none", "prompt": prompt,
+        }})
+        started = time.monotonic()
         resp = self._client.chat.completions.create(
             model=self._model,
             messages=[{"role": "user", "content": prompt}],
@@ -103,5 +121,12 @@ class NebiusLLM:
             },
             reasoning_effort="none",
         )
-        data = _coerce_null_strings(json.loads(resp.choices[0].message.content), json_schema)
+        content = resp.choices[0].message.content
+        latency_ms = round((time.monotonic() - started) * 1000)
+        _LOG.info("llm.response", extra={"payload": {
+            "model": self._model, "schema": schema.__name__,
+            "latency_ms": latency_ms, "content": content,
+            "usage": getattr(resp, "usage", None) and _usage_dict(resp.usage),
+        }})
+        data = _coerce_null_strings(json.loads(content), json_schema)
         return schema.model_validate(data)
