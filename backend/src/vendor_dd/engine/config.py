@@ -8,48 +8,47 @@ from vendor_dd.engine.schemas import Dimension
 
 @dataclass(frozen=True)
 class DimensionConfig:
-    query_template: str        # "{name} lawsuit litigation" — {name} filled at runtime
+    # Several FOCUSED queries per dimension instead of one keyword-stuffed query: each
+    # single-concept query gets clean relevance, and retrieve_dimension pools + dedupes
+    # their results. "{name}" is filled at runtime with the vendor's press name.
+    query_templates: tuple[str, ...]
     topic: str                 # "general" | "news" | "finance"
     search_depth: str          # "basic" | "advanced"
-    max_results: int
+    max_results: int           # PER query; the pool across queries is larger
     recency_days: int | None   # None = no time filter; else start_date = today - N days
     use_country: bool          # pass Tavily's country param (general topic only)
     exclude_own_domain: bool   # independent dims: force third-party sources
 
 
 DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
+    # SNAPSHOT/BACKLOG query_templates are unused (snapshot = entity resolution;
+    # backlog = earnings-transcript / news reuse) but kept for a uniform config shape.
     Dimension.SNAPSHOT: DimensionConfig(
-        "{name} company overview headquarters industry", "general", "advanced",
+        ("{name} company overview",), "general", "advanced",
         5, None, True, False),
     Dimension.LEGAL: DimensionConfig(
-        "{name} lawsuit litigation legal action", "general", "advanced",
-        20, 730, True, True),
+        ("{name} lawsuit", "{name} litigation", "{name} regulatory fine",
+         "{name} investigation"),
+        "general", "advanced", 10, 730, True, True),
     Dimension.SAFETY: DimensionConfig(
-        "{name} product recall safety defect investigation", "general", "advanced",
-        20, 730, True, True),
-    # NOT topic="finance": like the news topic, it returns broad market noise for a
-    # low-coverage vendor (verified: 2/11 mention Voith). The general topic does real
-    # keyword relevance — "{name} revenue financial results" returns 16/16 on-topic.
+        ("{name} safety incident", "{name} product recall", "{name} workplace accident",
+         "{name} safety violation"),
+        "general", "advanced", 10, 730, True, True),
     Dimension.FINANCIAL: DimensionConfig(
-        "{name} revenue financial results", "general", "advanced",
-        20, 365, False, True),
+        ("{name} revenue", "{name} financial results", "{name} debt funding",
+         "{name} profit"),
+        "general", "advanced", 10, 365, False, True),
     Dimension.BACKLOG: DimensionConfig(
-        "{name} backlog order book project pipeline", "finance", "advanced",
-        20, 365, False, False),
-    # No domain restriction: certs can come from the vendor's own site OR independent
-    # registrar/registry listings (an independent listing is stronger corroboration).
+        ("{name} order backlog project pipeline",), "finance", "advanced",
+        10, 365, False, False),
     Dimension.CERTIFICATIONS: DimensionConfig(
-        "{name} ISO AISC certification compliance quality", "general", "advanced",
-        20, None, True, False),
-    # NOT topic="news": Tavily's news topic returns recency-broad noise for a
-    # low-coverage company (verified: 0-1/20 mention the vendor). The general topic
-    # does real keyword relevance — "{name} news" returns 19/20 on-topic. One news
-    # section; the LLM weighs positive vs adverse coverage (no +/- query split).
-    # Own domain NOT excluded: for a private vendor, its own press releases are a
-    # legitimate news source. 120-day window.
+        ("{name} ISO certification", "{name} quality certification", "{name} accreditation"),
+        "general", "advanced", 10, None, True, False),
+    # Replaces the old news topic (which returned recency-broad noise). general topic
+    # + focused queries; own domain included so the vendor's press releases count.
     Dimension.NEWS: DimensionConfig(
-        "{name} news", "general", "advanced",
-        20, 120, False, False),
+        ("{name} news", "{name} contract award", "{name} expansion", "{name} controversy"),
+        "general", "advanced", 10, 120, False, False),
 }
 
 # TTL policy lives in code, not in the cache row (tunable without migration).
