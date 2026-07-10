@@ -3,6 +3,15 @@ import { DIMENSIONS } from '../dimensions'
 
 const LABEL = new Map(DIMENSIONS.map((d) => [d.key, d.label]))
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export function ReportPanel({ row, onClose }: { row: RowState; onClose: () => void }) {
   const report = row.report
   const entity = row.entity
@@ -32,9 +41,13 @@ export function ReportPanel({ row, onClose }: { row: RowState; onClose: () => vo
               {s.findings.map((f, i) => (
                 <div key={i} className="finding">
                   <span>{f.claim}</span>
-                  <a href={f.citation.url} target="_blank" rel="noopener noreferrer">
-                    ↗ {f.citation.title}
-                  </a>
+                  {isSafeUrl(f.citation.url) ? (
+                    <a href={f.citation.url} target="_blank" rel="noopener noreferrer">
+                      ↗ {f.citation.title}
+                    </a>
+                  ) : (
+                    <span className="cite-meta">{f.citation.title} (link unavailable)</span>
+                  )}
                   <span className="cite-meta">
                     {f.citation.source_type} · as of {f.citation.as_of ?? 'n/a'}
                   </span>
