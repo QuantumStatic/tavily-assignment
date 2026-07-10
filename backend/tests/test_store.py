@@ -77,3 +77,13 @@ def test_migrates_pre_session_id_database(tmp_path):
     # new projects on the migrated DB get a real session_id
     p = store.create_project("New Project")
     assert p.session_id is not None
+
+
+def test_store_logs_sql_queries(tmp_path):
+    import json
+    from vendor_dd.logs import configure_logging
+    configure_logging(tmp_path / "logs", level="INFO")
+    store = _store(tmp_path)
+    store.create_project("Acme")
+    lines = [json.loads(l) for l in (tmp_path / "logs" / "db.log").read_text().splitlines() if l.strip()]
+    assert any(o["event"] == "db.query" and "projects" in o["payload"]["sql"] for o in lines)

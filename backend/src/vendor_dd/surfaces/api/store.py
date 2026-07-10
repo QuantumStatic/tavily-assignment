@@ -7,6 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from vendor_dd.logs import get_logger
+
+_LOG = get_logger("db")
+
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -41,7 +45,7 @@ class Store:
         self._clock = clock
         self._id_gen = id_gen
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
-        self._conn.execute(
+        self._exec(
             """CREATE TABLE IF NOT EXISTS projects (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                  name TEXT NOT NULL,
@@ -50,10 +54,10 @@ class Store:
                )"""
         )
         # Migrate a DB created before session_id existed (Phase 2). No-op on fresh DBs.
-        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(projects)").fetchall()}
+        cols = {row[1] for row in self._exec("PRAGMA table_info(projects)").fetchall()}
         if "session_id" not in cols:
-            self._conn.execute("ALTER TABLE projects ADD COLUMN session_id TEXT")
-        self._conn.execute(
+            self._exec("ALTER TABLE projects ADD COLUMN session_id TEXT")
+        self._exec(
             """CREATE TABLE IF NOT EXISTS vendors (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
                  project_id INTEGER NOT NULL,
@@ -65,29 +69,37 @@ class Store:
         )
         self._conn.commit()
 
+    def _exec(self, sql: str, params: tuple = ()):
+        cur = self._conn.execute(sql, params)
+        _LOG.info("db.query", extra={"payload": {
+            "sql": " ".join(sql.split()), "params": list(params),
+            "rowcount": cur.rowcount, "lastrowid": cur.lastrowid,
+        }})
+        return cur
+
     def create_project(self, name: str) -> Project:
         ts = self._clock()
         sid = self._id_gen()
-        cur = self._conn.execute(
+        cur = self._exec(
             "INSERT INTO projects (name, created_at, session_id) VALUES (?,?,?)",
             (name, ts, sid))
         self._conn.commit()
         return Project(id=cur.lastrowid, name=name, created_at=ts, session_id=sid)
 
     def list_projects(self) -> list[Project]:
-        cur = self._conn.execute(
+        cur = self._exec(
             "SELECT id, name, created_at, session_id FROM projects ORDER BY id")
         return [Project(*row) for row in cur.fetchall()]
 
     def get_project(self, project_id: int) -> Project | None:
-        cur = self._conn.execute(
+        cur = self._exec(
             "SELECT id, name, created_at, session_id FROM projects WHERE id=?", (project_id,))
         row = cur.fetchone()
         return Project(*row) if row else None
 
     def add_vendor(self, project_id: int, name: str) -> Vendor:
         ts = self._clock()
-        cur = self._conn.execute(
+        cur = self._exec(
             "INSERT INTO vendors (project_id, name, vendor_key, created_at) VALUES (?,?,?,?)",
             (project_id, name, None, ts))
         self._conn.commit()
@@ -95,23 +107,23 @@ class Store:
                       vendor_key=None, created_at=ts)
 
     def list_vendors(self, project_id: int) -> list[Vendor]:
-        cur = self._conn.execute(
+        cur = self._exec(
             "SELECT id, project_id, name, vendor_key, created_at FROM vendors "
             "WHERE project_id=? ORDER BY id", (project_id,))
         return [Vendor(*row) for row in cur.fetchall()]
 
     def get_vendor(self, vendor_id: int) -> Vendor | None:
-        cur = self._conn.execute(
+        cur = self._exec(
             "SELECT id, project_id, name, vendor_key, created_at FROM vendors WHERE id=?",
             (vendor_id,))
         row = cur.fetchone()
         return Vendor(*row) if row else None
 
     def remove_vendor(self, vendor_id: int) -> None:
-        self._conn.execute("DELETE FROM vendors WHERE id=?", (vendor_id,))
+        self._exec("DELETE FROM vendors WHERE id=?", (vendor_id,))
         self._conn.commit()
 
     def set_vendor_key(self, vendor_id: int, vendor_key: str) -> None:
-        self._conn.execute(
+        self._exec(
             "UPDATE vendors SET vendor_key=? WHERE id=?", (vendor_key, vendor_id))
         self._conn.commit()
