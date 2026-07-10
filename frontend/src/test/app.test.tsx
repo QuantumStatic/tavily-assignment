@@ -63,7 +63,7 @@ test('the theme toggle is present regardless of whether a project is active', as
 
   // no projects yet -> empty state, but the toggle still renders in the toolbar
   await screen.findByText('Projects')
-  expect(document.querySelector('.main .empty')).toHaveTextContent('Create a project to begin.')
+  expect(document.querySelector('.main .empty')).toHaveTextContent('Select a project, or create one to begin.')
   expect(screen.getByRole('button', { name: /switch to (dark|light) mode/i })).toBeInTheDocument()
 })
 
@@ -278,6 +278,11 @@ test('a failed vendor deletion surfaces an error and keeps the row', async () =>
   await waitFor(() => expect(document.querySelector('.error-banner')).not.toBeNull())
   expect(screen.getByText('Cives Steel')).toBeInTheDocument()
   expect(es.closed).toBe(false)
+
+  // the banner is announced to assistive tech and has a visible, accessible dismiss control
+  expect(screen.getByRole('alert')).toBe(document.querySelector('.error-banner'))
+  await userEvent.click(screen.getByRole('button', { name: /dismiss error/i }))
+  expect(document.querySelector('.error-banner')).toBeNull()
 })
 
 test('a vendor add that resolves after switching projects does not appear in the new project', async () => {

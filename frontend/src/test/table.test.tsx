@@ -36,6 +36,8 @@ test('a streaming row shows a pending indicator', () => {
                 cells: { legal: 'pending' as const }, verdict: 'pending' as const }
   render(<VendorTable rows={[row]} onSelect={() => {}} onDelete={() => {}} />)
   expect(screen.getByTestId('cell-legal-pending')).toBeInTheDocument()
+  // screen readers get a text label, not just a silent pulsing dot
+  expect(screen.getAllByText('pending').length).toBeGreaterThan(0)
 })
 
 test('the delete button has an accessible name', () => {
