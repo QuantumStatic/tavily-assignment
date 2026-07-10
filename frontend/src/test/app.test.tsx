@@ -57,12 +57,25 @@ function mockApi(opts: MockApiOptions = {}) {
 beforeEach(() => FakeEventSource.reset())
 afterEach(() => vi.restoreAllMocks())
 
+test('the theme toggle is present regardless of whether a project is active', async () => {
+  mockApi({ projects: [] })
+  render(<App />)
+
+  // no projects yet -> empty state, but the toggle still renders in the toolbar
+  await screen.findByText('Projects')
+  expect(document.querySelector('.main .empty')).toHaveTextContent('Create a project to begin.')
+  expect(screen.getByRole('button', { name: /switch to (dark|light) mode/i })).toBeInTheDocument()
+})
+
 test('add a vendor, watch cells stream in, open the report panel', async () => {
   mockApi()
   render(<App />)
 
   // project loads into the sidebar and auto-selects
   await screen.findByRole('heading', { name: 'Bridge job' })
+
+  // the theme toggle is still present when a project is active
+  expect(screen.getByRole('button', { name: /switch to (dark|light) mode/i })).toBeInTheDocument()
 
   // add a vendor -> POST then a stream opens
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
