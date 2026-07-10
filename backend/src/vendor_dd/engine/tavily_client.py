@@ -42,8 +42,6 @@ def build_search_kwargs(dim: Dimension, entity: EntityCard, *, today: date) -> d
         kwargs["start_date"] = (today - timedelta(days=cfg.recency_days)).isoformat()
     if cfg.exclude_own_domain and entity.domain:
         kwargs["exclude_domains"] = [entity.domain]
-    if cfg.include_own_domain and entity.domain:
-        kwargs["include_domains"] = [entity.domain]
     return kwargs
 
 

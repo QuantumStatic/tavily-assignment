@@ -90,10 +90,11 @@ def test_news_keeps_entity_named_results_regardless_of_score():
     assert urls == ["https://news.com/voith"]   # only the one that actually names Voith survives
 
 
-def test_certifications_include_own_domain():
+def test_certifications_are_not_domain_restricted():
     kw = build_search_kwargs(Dimension.CERTIFICATIONS, _entity(), today=date(2026, 7, 8))
-    assert kw["include_domains"] == ["cives.com"]
-    assert "start_date" not in kw                     # recency_days is None
+    assert "include_domains" not in kw                 # no longer restricted to own domain
+    assert "exclude_domains" not in kw                 # nor forced to third-party
+    assert "start_date" not in kw                      # recency_days is None
 
 
 class FakeSearchWithContamination:
