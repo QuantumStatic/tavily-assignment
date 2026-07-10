@@ -34,10 +34,12 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
         ("{name} safety incident", "{name} product recall", "{name} workplace accident",
          "{name} safety violation"),
         "general", "basic", 10, 730, True, True),
+    # Own domain NOT excluded: financial figures are self-reported by nature — the
+    # vendor's own audited report / IR page is the primary source of revenue/capex.
     Dimension.FINANCIAL: DimensionConfig(
         ("{name} revenue", "{name} financial results", "{name} debt funding",
          "{name} profit"),
-        "general", "basic", 10, 365, False, True),
+        "general", "basic", 10, 365, False, False),
     Dimension.BACKLOG: DimensionConfig(
         ("{name} order backlog project pipeline",), "finance", "basic",
         10, 365, False, False),
