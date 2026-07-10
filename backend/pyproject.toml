@@ -4,9 +4,7 @@ version = "0.1.0"
 description = "Vendor due-diligence agent powered by Tavily search/extract"
 requires-python = ">=3.11"
 dependencies = [
-    "langchain>=1.0.0",
-    "langchain-openai>=1.0.0",
-    "langchain-tavily>=0.2.0",
+    "openai>=1.50.0",
     "tavily-python>=0.5.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
