@@ -43,6 +43,10 @@ export default function App() {
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const streams = useRef<Map<number, () => void>>(new Map())
+  const activeIdRef = useRef(activeId)
+
+  // keep activeIdRef in sync with activeId
+  useEffect(() => { activeIdRef.current = activeId }, [activeId])
 
   // load projects once
   useEffect(() => {
@@ -89,8 +93,10 @@ export default function App() {
 
   async function addVendor(name: string) {
     if (activeId == null) return
+    const forProject = activeId
     try {
-      const v = await api.addVendor(activeId, name)
+      const v = await api.addVendor(forProject, name)
+      if (activeIdRef.current !== forProject) return   // user switched projects while this was in flight
       const row = startStreaming(rowFromSummary({
         vendor_id: v.id, name: v.name, vendor_key: v.vendor_key,
         generated: false, verdict_score: null, verdict_reasoning: null, dimensions: [],

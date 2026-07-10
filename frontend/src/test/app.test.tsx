@@ -9,6 +9,7 @@ type MockApiOptions = {
   projectDetails?: Record<number, { id: number; name: string; created_at: string; vendors: unknown[] }>
   vendorReports?: Record<number, unknown>
   deleteVendor?: (id: number) => { ok: boolean; status?: number; json: () => Promise<unknown> }
+  addVendor?: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>
 }
 
 function mockApi(opts: MockApiOptions = {}) {
@@ -31,8 +32,10 @@ function mockApi(opts: MockApiOptions = {}) {
       if (detail) return { ok: true, json: async () => detail }
     }
     const addVendorMatch = u.match(/\/projects\/(\d+)\/vendors$/)
-    if (addVendorMatch && method === 'POST')
+    if (addVendorMatch && method === 'POST') {
+      if (opts.addVendor) return opts.addVendor()
       return { ok: true, json: async () => ({ id: 5, project_id: Number(addVendorMatch[1]), name: 'Cives Steel', vendor_key: null, created_at: 't' }) }
+    }
     const reportMatch = u.match(/\/vendors\/(\d+)\/report$/)
     if (reportMatch && method === 'GET') {
       const id = Number(reportMatch[1])
@@ -172,4 +175,43 @@ test('a failed vendor deletion surfaces an error and keeps the row', async () =>
 
   await waitFor(() => expect(document.querySelector('.error-banner')).not.toBeNull())
   expect(screen.getByText('Cives Steel')).toBeInTheDocument()
+})
+
+test('a vendor add that resolves after switching projects does not appear in the new project', async () => {
+  const projects = [
+    { id: 1, name: 'Bridge job', created_at: 't' },
+    { id: 2, name: 'Tunnel job', created_at: 't' },
+  ]
+  const projectDetails = {
+    1: { id: 1, name: 'Bridge job', created_at: 't', vendors: [] },
+    2: { id: 2, name: 'Tunnel job', created_at: 't', vendors: [] },
+  }
+  let resolvePost: (v?: unknown) => void
+  const postPromise = new Promise<void>((res) => { resolvePost = () => res() })
+  mockApi({
+    projects,
+    projectDetails,
+    addVendor: async () => {
+      await postPromise
+      return { ok: true, json: async () => ({ id: 5, project_id: 1, name: 'Cives Steel', vendor_key: null, created_at: 't' }) }
+    },
+  })
+  render(<App />)
+
+  await screen.findByRole('heading', { name: 'Bridge job' })
+
+  // add a vendor to project 1 (POST pending)
+  await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
+  await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
+
+  // switch to project 2 before the POST resolves
+  await userEvent.click(screen.getByRole('button', { name: /Tunnel job/ }))
+  await screen.findByRole('heading', { name: 'Tunnel job' })
+
+  // resolve the pending POST
+  resolvePost!({})
+
+  // assert project 2's table does NOT show the vendor that was added to project 1
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Tunnel job' })).toBeInTheDocument())
+  expect(screen.queryByText('Cives Steel')).not.toBeInTheDocument()
 })
