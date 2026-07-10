@@ -19,3 +19,20 @@ test('does not submit an empty name', async () => {
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
   expect(onAdd).not.toHaveBeenCalled()
 })
+
+test('the add-vendor button is disabled until the input has non-whitespace text', async () => {
+  render(<AddVendorForm onAdd={vi.fn()} />)
+  const button = screen.getByRole('button', { name: /add vendor/i })
+  const input = screen.getByPlaceholderText('Vendor name…')
+
+  expect(button).toBeDisabled()
+
+  await userEvent.type(input, '  ')
+  expect(button).toBeDisabled()   // whitespace-only still counts as empty
+
+  await userEvent.type(input, 'Cives Steel')
+  expect(button).toBeEnabled()
+
+  await userEvent.clear(input)
+  expect(button).toBeDisabled()
+})
