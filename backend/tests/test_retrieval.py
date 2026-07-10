@@ -49,6 +49,23 @@ def test_retrieve_dimension_filters_contamination():
     assert kept[0]["url"] == "https://news.com/a"
 
 
+def test_retrieval_logs_filtered_count(tmp_path):
+    import json
+    from vendor_dd.logs import configure_logging
+    configure_logging(tmp_path / "logs", level="INFO")
+
+    retrieve_dimension(Dimension.FINANCIAL, _entity(),
+                       search=FakeSearchWithContamination(), today=date(2026, 7, 8))
+
+    lines = [json.loads(l) for l in (tmp_path / "logs" / "general.log").read_text().splitlines() if l.strip()]
+    events = [o for o in lines if o["event"] == "retrieval.filtered"]
+    assert events
+    payload = events[-1]["payload"]
+    assert payload["dimension"] == "financial"
+    assert payload["kept"] == 1      # one result mentions "Cives Steel" and scores well
+    assert payload["filtered"] == 1  # the other is a different company (Bayou Steel) + low score
+
+
 def test_tavily_client_logs_request_and_response(tmp_path):
     import json
     from vendor_dd.logs import configure_logging
