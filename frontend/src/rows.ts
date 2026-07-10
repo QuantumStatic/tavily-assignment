@@ -9,7 +9,7 @@ export interface RowState {
   vendorKey: string | null
   entity?: EntityCard
   cells: Record<string, CellState>
-  verdict: 'idle' | 'pending' | 'failed' | { score: number }
+  verdict: CellState
   status: 'idle' | 'streaming' | 'done' | 'error'
   errorMsg?: string
   report?: Report
@@ -49,6 +49,7 @@ export function startStreaming(row: RowState): RowState {
 /** Apply one SSE event to a row, returning the next row state. */
 export function reduceEvent(row: RowState, ev: ReportStreamEvent): RowState {
   switch (ev.type) {
+    // Safe to unconditionally reset cells/verdict to pending: ReportEngine.iter_events always yields EntityResolved as the very first event, before any dimension fan-out begins, so this case never fires after section_complete/section_error events.
     case 'entity_resolved':
       return { ...row, entity: ev.entity, status: 'streaming',
                cells: cellsWith('pending'), verdict: 'pending' }
