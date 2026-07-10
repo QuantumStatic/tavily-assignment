@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
+from sse_starlette.sse import EventSourceResponse
 
 from vendor_dd.engine.cache import SQLiteCache
+from vendor_dd.engine.events import EntityResolved
+from vendor_dd.engine.pipeline import ReportEngine
 from vendor_dd.engine.schemas import Dimension, EntityCard, Section
 from vendor_dd.engine.synthesis import assemble_verdict
 from vendor_dd.surfaces.api.schemas import (
     DimensionScore, ProjectDetail, ProjectIn, ProjectOut, VendorIn, VendorOut,
     VendorReport, VendorSummary,
 )
+from vendor_dd.surfaces.api.sse import to_sse_frame
 from vendor_dd.surfaces.api.store import Store, Vendor
 
 router = APIRouter()
@@ -104,3 +108,21 @@ def get_report(vendor_id: int, request: Request):
     entity = EntityCard.model_validate(entity_raw) if entity_raw else None
     return VendorReport(generated=True, vendor_key=vendor.vendor_key, entity=entity,
                         verdict_score=score, verdict_reasoning=reasoning, sections=sections)
+
+
+@router.get("/vendors/{vendor_id}/report/stream")
+def stream_report(vendor_id: int, request: Request):
+    store = _store(request)
+    vendor = store.get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="vendor not found")
+    engine = ReportEngine(request.app.state.deps, mode="parallel")
+
+    def event_source():
+        for ev in engine.iter_events(vendor.name):
+            if isinstance(ev, EntityResolved):
+                key = (ev.entity.domain or ev.entity.name).strip().lower()
+                store.set_vendor_key(vendor_id, key)  # backfill so the read model can join
+            yield to_sse_frame(ev)
+
+    return EventSourceResponse(event_source())

@@ -78,3 +78,34 @@ def test_missing_project_and_vendor_return_404(tmp_path):
 def test_delete_missing_vendor_returns_404(tmp_path):
     client = _client(tmp_path)
     assert client.delete("/vendors/9999").status_code == 404
+
+
+def _event_names(raw: str) -> list[str]:
+    return [line[len("event:"):].strip()
+            for line in raw.splitlines() if line.startswith("event:")]
+
+
+def test_stream_endpoint_emits_full_event_sequence(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+        assert resp.status_code == 200
+        body = "".join(resp.iter_text())
+
+    names = _event_names(body)
+    assert names[0] == "entity_resolved"
+    assert names[-1] == "report_complete"
+    assert names.count("section_complete") == 7   # 6 dims + backlog
+
+    # vendor_key was backfilled during the stream, so the report is now readable
+    report = client.get(f"/vendors/{vid}/report").json()
+    assert report["generated"] is True
+    assert client.get(f"/projects/{pid}").json()["vendors"][0]["generated"] is True
+
+
+def test_stream_missing_vendor_returns_404(tmp_path):
+    client = _client(tmp_path)
+    resp = client.get("/vendors/9999/report/stream")
+    assert resp.status_code == 404
