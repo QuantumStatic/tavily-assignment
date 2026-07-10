@@ -214,10 +214,11 @@ clean. **No Critical issues.** Folded fixes, prioritized:
   clear typed error (fake client).
 - **C2 — Read-model completeness signal (frontend contract).** `_summarize`/`get_report` set
   `generated=true` and run `assemble_verdict` over *any* cached subset — an interrupted run shows a
-  confident verdict computed from 2 of 7 sections as if finished. Fix: expose completeness in the read
-  model (`sections_present` + `sections_expected`, or a `complete: bool`) so the frontend can tell
-  partial from complete; decide whether to redefine `generated` or keep it as "≥1 section" in the plan.
-  Consumed by Part B. Tests: cache a subset → assert the completeness fields.
+  confident verdict computed from 2 of 7 sections as if finished. Fix (decision locked): keep
+  `generated` as-is (backward-compatible = "≥1 section cached") and **add** `sections_present` +
+  `sections_expected` to `VendorSummary` and `VendorReport` so the frontend can distinguish partial
+  from complete and show e.g. "5 of 7 dimensions — still generating". Consumed by Part B. Tests: cache
+  a subset → assert the completeness fields.
 
 ### Cheap wins (fold in)
 
