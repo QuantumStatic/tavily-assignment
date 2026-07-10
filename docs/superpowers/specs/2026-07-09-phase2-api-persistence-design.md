@@ -154,7 +154,8 @@ whatever's cached, with an "as of" badge; freshness is a UI concern, not a reaso
     db path, and returns `create_app(deps, db_path)`. This is what `uvicorn --factory` targets.
 - `store.py` — persistence (§3.1).
 - `routes.py` — endpoint handlers.
-- `sse.py` — the sync-generator → async-SSE bridge (§4.2), its own testable unit.
+- `sse.py` — the small `event_source` generator that maps engine `ReportEvent`s → SSE frames (§4.2),
+  its own testable unit.
 - `schemas.py` — API request/response models (`ProjectIn/Out`, `VendorIn/Out`, `ReportSummary`,
   `VendorReport`), distinct from engine schemas.
 
@@ -176,18 +177,38 @@ whatever's cached, with an "as of" badge; freshness is a UI concern, not a reaso
 - `GET /projects/{id}` recomputes each vendor's verdict from cached sections (verdict is never stored
   independently — Phase 1 rule).
 
-### 4.2 SSE bridge
+### 4.2 SSE streaming (native `sse-starlette` sync generator)
 
-The engine's `iter_events` is a **blocking** generator; the FastAPI endpoint is async. Bridge without
-stalling the event loop:
+The engine's `iter_events` is a **blocking** generator (it waits on Tavily/Nebius). We rely on
+`sse-starlette`'s native support for **sync generators**: `EventSourceResponse` iterates a sync
+generator in a threadpool, so each blocking `next()` runs off the event loop and never stalls the
+server. No manual queue/thread bridge is needed.
 
-1. Run `iter_events` in a worker thread; each event is put on a `queue.Queue`, a sentinel marks the end.
-2. An async generator does `await anyio.to_thread.run_sync(queue.get)` in a loop, converting each
-   event to an SSE message (`event: <type>`, `data: <event.model_dump_json()>`), until the sentinel.
-3. Wrap in `sse-starlette`'s `EventSourceResponse`.
+The endpoint hands `EventSourceResponse` a small `event_source()` sync generator that pulls each
+engine event and yields an SSE frame:
 
-As sections stream, the driver persists them (via the store/cache on the worker thread — this thread
-owns the run, consistent with §2.3) and backfills `vendor_key` after `EntityResolved`.
+```python
+def event_source(vendor: str):
+    for ev in engine.iter_events(vendor):          # blocking; run in threadpool by sse-starlette
+        yield {"event": ev.type,                   # -> "event: section_complete"
+               "data": ev.model_dump_json()}       # -> "data: {...}"
+
+return EventSourceResponse(event_source(vendor))
+```
+
+Each `yield` is one event flushed to the browser over the single open connection; the browser's
+`EventSource` fires a listener keyed on the `event:` name (`section_complete`, `report_complete`,
+`section_error`, `report_error`) and parses `data`. When the generator returns, the stream closes.
+
+`iter_events` itself owns the run: as sections stream, it persists them (cache + store) and backfills
+`vendor_key` after `EntityResolved`, all on the generator's thread — consistent with the
+driver-owns-DB rule in §2.3.
+
+**Fallback:** if a `sse-starlette` version misbehaves with sync generators, wrap `iter_events` in a
+worker thread feeding a `queue.Queue`, consumed by an async generator (`await
+anyio.to_thread.run_sync(queue.get)`). Documented as a fallback only; the native sync-generator path
+is the default. A tiny spike during implementation confirms the native path works before building on
+it.
 
 ---
 
@@ -205,11 +226,11 @@ owns the run, consistent with §2.3) and backfills `vendor_key` after `EntityRes
   - Existing Phase 1 pipeline behaviors (entity caching, backlog news reuse, dimension coverage)
     preserved.
 - **`test_store.py`** — projects/vendors CRUD + `set_vendor_key` backfill, temp SQLite.
-- **`test_sse_bridge.py`** — the sync→async queue bridge yields events in order, terminates on the
-  sentinel, and propagates a worker error as a terminal event.
+- **`test_sse.py`** — the `event_source()` generator maps each engine `ReportEvent` to a correct SSE
+  frame (`event` name + JSON `data`) in order, and ends when the engine generator ends.
 - **`test_api.py`** — FastAPI `TestClient` with **injected fake deps**: create project, add vendor,
-  list, `GET /projects/{id}` (empty then populated report summary), and the SSE endpoint yields the
-  expected event sequence. No live API calls.
+  list, `GET /projects/{id}` (empty then populated report summary), and the SSE endpoint streams the
+  expected event sequence (TestClient reads the streamed frames). No live API calls.
 
 All I/O seams (Tavily, Nebius, transcript fetch) use fakes injected via `Deps` / the `create_app`
 factory, so the suite spends no credits.
@@ -257,8 +278,8 @@ backend/
         app.py       # create_app(deps, db_path) factory: CORS, routers, SSE
         store.py     # Store: projects/vendors CRUD + vendor_key backfill
         routes.py    # REST + SSE endpoint handlers
-        sse.py       # blocking-generator -> async EventSourceResponse bridge
+        sse.py       # event_source() generator: ReportEvent -> SSE frame, for EventSourceResponse
         schemas.py   # API request/response models
   tests/
-    test_engine.py  test_store.py  test_sse_bridge.py  test_api.py
+    test_engine.py  test_store.py  test_sse.py  test_api.py
 ```
