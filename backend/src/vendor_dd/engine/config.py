@@ -43,9 +43,11 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
     # low-coverage company (verified: 0-1/20 mention the vendor). The general topic
     # does real keyword relevance — "{name} news" returns 19/20 on-topic. One news
     # section; the LLM weighs positive vs adverse coverage (no +/- query split).
+    # Own domain NOT excluded: for a private vendor, its own press releases are a
+    # legitimate news source. 120-day window.
     Dimension.NEWS: DimensionConfig(
         "{name} news", "general", "advanced",
-        20, 90, False, True),
+        20, 120, False, False),
 }
 
 # TTL policy lives in code, not in the cache row (tunable without migration).
