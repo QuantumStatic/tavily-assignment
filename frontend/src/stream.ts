@@ -19,9 +19,14 @@ export function openReportStream(
   const es = new EventSource(api.streamUrl(vendorId))
   for (const type of EVENT_TYPES) {
     es.addEventListener(type, (e: MessageEvent) => {
-      const data = JSON.parse(e.data)
-      onEvent({ type, ...data } as ReportStreamEvent)
-      if (type === 'report_complete' || type === 'report_error') es.close()
+      try {
+        const data = JSON.parse(e.data)
+        onEvent({ type, ...data } as ReportStreamEvent)
+        if (type === 'report_complete' || type === 'report_error') es.close()
+      } catch {
+        es.close()
+        onError()
+      }
     })
   }
   es.onerror = () => { es.close(); onError() }

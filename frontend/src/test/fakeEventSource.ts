@@ -27,5 +27,9 @@ export class FakeEventSource {
     for (const fn of this.listeners[type] || [])
       fn({ data: JSON.stringify(data) } as MessageEvent)
   }
+  emitRaw(type: string, rawData: string) {
+    for (const fn of this.listeners[type] || [])
+      fn({ data: rawData } as MessageEvent)
+  }
   fail() { this.onerror?.() }
 }
