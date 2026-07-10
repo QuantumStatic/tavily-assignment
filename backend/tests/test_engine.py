@@ -2,6 +2,7 @@ from vendor_dd.engine.schemas import Dimension, EntityCard, Section, Report
 from vendor_dd.engine.events import (
     EntityResolved, SectionComplete, SectionError, ReportComplete, ReportError,
 )
+from vendor_dd.engine.llm import LLMError
 
 
 def _entity():
@@ -148,6 +149,60 @@ def test_backlog_failure_yields_report_error(tmp_path):
     assert not any(e.type == "report_complete" for e in events)
 
 
+class BacklogLLMErrorOnceLLM:
+    """Raises LLMError on the first backlog synthesis call, succeeds on retry."""
+
+    def __init__(self):
+        self.backlog_calls = 0
+
+    def structured(self, prompt, schema):
+        if schema is EntityCard:
+            return EntityCard(name="Cives Steel", domain="cives.com", country="united states",
+                              industry="steel", is_public=False)
+        if "backlog" in prompt:
+            self.backlog_calls += 1
+            if self.backlog_calls == 1:
+                raise LLMError("backlog transient failure")
+            return Section(dimension=Dimension.BACKLOG, findings=[], reasoning="ok", score=7)
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="ok", score=7)
+
+
+def test_backlog_llm_error_is_retried_once_and_recovers(tmp_path):
+    llm = BacklogLLMErrorOnceLLM()
+    engine = ReportEngine(_deps(tmp_path, llm=llm), mode="sequential")
+    events = list(engine.iter_events("Cives Steel"))
+    assert events[-1].type == "report_complete"
+    assert llm.backlog_calls == 2
+    completed_dims = {e.section.dimension for e in events if e.type == "section_complete"}
+    assert Dimension.BACKLOG in completed_dims
+
+
+class BacklogLLMErrorAlwaysLLM:
+    """Raises LLMError on every backlog synthesis call (retry exhausted)."""
+
+    def __init__(self):
+        self.backlog_calls = 0
+
+    def structured(self, prompt, schema):
+        if schema is EntityCard:
+            return EntityCard(name="Cives Steel", domain="cives.com", country="united states",
+                              industry="steel", is_public=False)
+        if "backlog" in prompt:
+            self.backlog_calls += 1
+            raise LLMError("backlog persistent failure")
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="ok", score=7)
+
+
+def test_backlog_llm_error_after_retry_still_yields_report_error(tmp_path):
+    llm = BacklogLLMErrorAlwaysLLM()
+    engine = ReportEngine(_deps(tmp_path, llm=llm), mode="sequential")
+    events = list(engine.iter_events("Cives Steel"))
+    assert isinstance(events[-1], ReportError)
+    assert events[-1].message == "report could not be generated"
+    assert llm.backlog_calls == 2
+    assert not any(e.type == "report_complete" for e in events)
+
+
 def test_iter_events_closes_cache_when_generator_abandoned(tmp_path):
     import sqlite3
     engine = ReportEngine(_deps(tmp_path), mode="sequential")
@@ -246,3 +301,27 @@ def test_section_error_message_is_generic_but_logged(tmp_path):
     assert err.dimension is Dimension.FINANCIAL
     lines = (tmp_path / "logs" / "general.log").read_text()
     assert "boom" in lines                                # ...but the detail IS logged server-side
+
+
+def test_verdict_failure_yields_generic_report_error_and_is_logged(tmp_path, monkeypatch):
+    from vendor_dd.logs import configure_logging
+    from vendor_dd.engine.events import ReportError
+    import vendor_dd.engine.pipeline as pipeline_mod
+
+    configure_logging(tmp_path / "logs", level="INFO")
+
+    def _boom(sections):
+        raise RuntimeError("verdict boom")
+
+    monkeypatch.setattr(pipeline_mod, "assemble_verdict", _boom)
+
+    engine = ReportEngine(_deps(tmp_path), mode="sequential")
+    events = list(engine.iter_events("Cives Steel"))
+
+    assert isinstance(events[-1], ReportError)
+    assert events[-1].message == "report could not be generated"
+    assert "verdict boom" not in events[-1].message         # raw exception text not surfaced
+    assert not any(e.type == "report_complete" for e in events)
+
+    lines = (tmp_path / "logs" / "general.log").read_text()
+    assert "verdict boom" in lines                          # ...but the detail IS logged server-side
