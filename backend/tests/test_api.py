@@ -108,3 +108,38 @@ def test_stream_missing_vendor_returns_404(tmp_path):
     client = _client(tmp_path)
     resp = client.get("/vendors/9999/report/stream")
     assert resp.status_code == 404
+
+
+class OneDimFailsLLM:
+    """Like FakeLLM but raises for the FINANCIAL synthesis prompt."""
+
+    def structured(self, prompt, schema):
+        if schema is EntityCard:
+            return EntityCard(name="Cives Steel", domain="cives.com", country="united states",
+                              industry="steel", is_public=False)
+        if "financial" in prompt:
+            raise RuntimeError("boom")
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="ok", score=7)
+
+
+def test_stream_emits_section_error_and_still_completes(tmp_path):
+    deps = Deps(search=FakeSearch(), llm=OneDimFailsLLM(), cache_path=tmp_path / "db.sqlite",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    client = TestClient(create_app(deps))
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+        assert resp.status_code == 200
+        body = "".join(resp.iter_text())
+
+    assert "event: section_error" in body       # the failing dim surfaced as an SSE frame
+    names = _event_names(body)
+    assert names.count("section_error") == 1
+    assert names[-1] == "report_complete"       # stream still ends normally
+    assert names.count("section_complete") == 6  # 7 minus the failed financial dim
+
+    report = client.get(f"/vendors/{vid}/report").json()
+    assert report["generated"] is True
+    assert len(report["sections"]) == 6
+    assert "financial" not in {s["dimension"] for s in report["sections"]}
