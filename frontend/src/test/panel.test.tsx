@@ -41,3 +41,25 @@ test('a streaming row with no report yet shows a progress note', () => {
   render(<ReportPanel row={{ ...row, status: 'streaming', report: undefined }} onClose={() => {}} />)
   expect(screen.getByText(/generating/i)).toBeInTheDocument()
 })
+
+test('renders a safe https citation link', () => {
+  render(<ReportPanel row={row} onClose={() => {}} />)
+  expect(screen.getByRole('link', { name: /pacer/i })).toHaveAttribute('href', 'https://pacer.gov')
+})
+
+test('does not render an anchor for an unsafe URL scheme', () => {
+  const unsafeRow = {
+    ...row,
+    report: {
+      ...row.report!,
+      sections: [{
+        dimension: 'legal', score: 8, reasoning: 'clean',
+        findings: [{ claim: 'Bad link.',
+                     citation: { url: 'javascript:alert(1)', title: 'Evil', source_type: 'independent', score: 0.9, as_of: '2026-06' } }],
+      }],
+    },
+  }
+  render(<ReportPanel row={unsafeRow} onClose={() => {}} />)
+  expect(screen.queryByRole('link', { name: /evil/i })).not.toBeInTheDocument()
+  expect(screen.getByText(/evil/i)).toBeInTheDocument()
+})
