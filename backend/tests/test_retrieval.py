@@ -20,10 +20,11 @@ def test_legal_kwargs_use_country_and_exclude_own_domain():
     assert "country" in kw
 
 
-def test_news_kwargs_use_news_topic_no_country_90d_window():
+def test_news_kwargs_use_general_topic_with_news_keyword_90d_window():
     kw = build_search_kwargs(Dimension.NEWS, _entity(), today=date(2026, 7, 8))
-    assert kw["topic"] == "news"
-    assert "country" not in kw                        # incompatible with news
+    assert kw["topic"] == "general"                   # news topic returns broad noise
+    assert kw["query"].endswith("news")               # "{name} news"
+    assert "country" not in kw                        # use_country stays off for news
     assert kw["start_date"] == "2026-04-09"           # today - 90 days
 
 

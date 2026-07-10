@@ -39,10 +39,12 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
     Dimension.CERTIFICATIONS: DimensionConfig(
         "{name} ISO AISC certification compliance quality", "general", "advanced",
         20, None, True, False),
-    # news topic + recency does the scoping; one news search (the LLM weighs positive
-    # vs adverse coverage in the section, no positive/negative query split).
+    # NOT topic="news": Tavily's news topic returns recency-broad noise for a
+    # low-coverage company (verified: 0-1/20 mention the vendor). The general topic
+    # does real keyword relevance — "{name} news" returns 19/20 on-topic. One news
+    # section; the LLM weighs positive vs adverse coverage (no +/- query split).
     Dimension.NEWS: DimensionConfig(
-        "{name}", "news", "advanced",
+        "{name} news", "general", "advanced",
         20, 90, False, True),
 }
 
