@@ -41,6 +41,8 @@ class VendorSummary(BaseModel):
     verdict_score: int | None = Field(default=None, ge=0, le=10)
     verdict_reasoning: str | None = None
     dimensions: list[DimensionScore]
+    sections_present: int = 0
+    sections_expected: int = 7  # keep in sync with routes.EXPECTED_SECTIONS; every route sets this explicitly
 
 
 class ProjectDetail(BaseModel):
@@ -57,3 +59,5 @@ class VendorReport(BaseModel):
     verdict_score: int | None = Field(default=None, ge=0, le=10)
     verdict_reasoning: str | None = None
     sections: list[Section]
+    sections_present: int = 0
+    sections_expected: int = 7  # keep in sync with routes.EXPECTED_SECTIONS; every route sets this explicitly
