@@ -24,25 +24,25 @@ DIMENSION_CONFIGS: dict[Dimension, DimensionConfig] = {
         5, None, True, False, False),
     Dimension.LEGAL: DimensionConfig(
         "{name} lawsuit litigation legal action", "general", "advanced",
-        5, 730, True, False, True),
+        20, 730, True, False, True),
     Dimension.SAFETY: DimensionConfig(
         "{name} product recall safety defect investigation", "general", "advanced",
-        5, 730, True, False, True),
+        20, 730, True, False, True),
     Dimension.FINANCIAL: DimensionConfig(
         "{name} layoffs bankruptcy financial trouble downgrade", "finance", "advanced",
-        6, 365, False, False, True),
+        20, 365, False, False, True),
     Dimension.BACKLOG: DimensionConfig(
         "{name} backlog order book project pipeline", "finance", "advanced",
-        5, 365, False, False, False),
+        20, 365, False, False, False),
     Dimension.CERTIFICATIONS: DimensionConfig(
         "{name} ISO AISC certification compliance quality", "general", "advanced",
-        3, None, True, True, False),
+        20, None, True, True, False),
     Dimension.NEWS_POSITIVE: DimensionConfig(
         "{name} contract award partnership expansion", "news", "advanced",
-        8, 90, False, False, True),
+        20, 90, False, False, True),
     Dimension.NEWS_NEGATIVE: DimensionConfig(
         "{name} controversy incident dispute closure", "news", "advanced",
-        8, 90, False, False, True),
+        20, 90, False, False, True),
 }
 
 # TTL policy lives in code, not in the cache row (tunable without migration).
