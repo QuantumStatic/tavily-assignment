@@ -214,3 +214,22 @@ def test_public_company_backlog_uses_transcript_not_search(tmp_path):
     assert "Earnings call transcript" in prompt
     assert transcript[:6000] in prompt        # first 6000 chars present...
     assert transcript not in prompt           # ...but the full 16000-char text is not
+
+
+def test_session_id_injected_into_every_search(tmp_path):
+    search = RecordingSearch()
+    deps = Deps(search=search, llm=StatelessLLM(), cache_path=tmp_path / "c.db",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    ReportEngine(deps, mode="sequential", session_id="sess-xyz").run_report("Cives Steel")
+    assert search.calls, "expected search to be called"
+    assert all(c.get("session_id") == "sess-xyz" for c in search.calls)
+    assert all(c.get("client_name") == "vendor-dd" for c in search.calls)
+
+
+def test_no_session_id_leaves_search_kwargs_untouched(tmp_path):
+    search = RecordingSearch()
+    deps = Deps(search=search, llm=StatelessLLM(), cache_path=tmp_path / "c.db",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    ReportEngine(deps, mode="sequential").run_report("Cives Steel")   # no session_id
+    assert search.calls
+    assert all("session_id" not in c for c in search.calls)
