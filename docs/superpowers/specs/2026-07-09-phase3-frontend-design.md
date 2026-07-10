@@ -157,7 +157,40 @@ cached per-dimension scores and verdict. This is the persisted read model — no
 - Empty states: no projects → sidebar prompts "Create a project"; project with no vendors → table
   shows an "Add your first vendor" placeholder.
 
-## 9. Testing
+## 9. Backend change: Tavily `session_id` for tracing
+
+Folded into this phase (a small Phase 2 *engine* change) so all Tavily searches become
+attributable/groupable — aligning with the assignment's tracing/observability bonus. This is
+backend-only; the frontend never sees `session_id`.
+
+**Grouping unit = project.** A `session_id` (a `uuid4` hex) is generated **once when a project is
+created** and stored on the project row. Every Tavily search for every vendor in that project carries
+the same `X-Session-Id`, so Tavily groups the whole engagement's searches into one session on its
+dashboard.
+
+- **Store:** the `projects` table gains a `session_id TEXT NOT NULL` column, populated at
+  `create_project` with a fresh id (id generator injected like the existing `clock`, for deterministic
+  tests). The `Project` dataclass gains `session_id`.
+- **Engine:** `ReportEngine.__init__` accepts an optional `session_id`. It wraps `deps.search` in a
+  tiny run-level adapter that injects `session_id` (and `client_name="vendor-dd"`) into every
+  `search(**kwargs)` call via `kwargs.setdefault(...)`. This leaves `retrieval.py`, `entity.py`, and
+  `build_search_kwargs` untouched — the run-level id is a decorator concern, not a per-call parameter.
+  The tavily-python SDK maps the `session_id` kwarg to the `X-Session-Id` header
+  ([tavily.py `_pop_request_headers`](../../../backend/.venv/lib/python3.12/site-packages/tavily/tavily.py));
+  a run with `session_id=None` behaves exactly as today (no header).
+- **API:** `stream_report` looks up the vendor → its project → passes the project's `session_id` into
+  `ReportEngine`. No API response shape changes — `session_id` stays server-side.
+- **CLI:** generates a fresh per-run `session_id` (there's no project context) so CLI invocations are
+  each grouped as one session.
+- **Not doing now:** `human_id` (no user identity in a single-user demo) and `include_usage` response
+  parsing (per-call credit accounting) — noted as future, out of scope.
+
+**Tests (zero-credit, fakes):** a recording fake `SearchClient` asserts (a) every search call within a
+run carries the same `session_id`, (b) it equals the project's stored id (via the API path), and
+(c) `session_id=None` omits the kwarg. A store test asserts `create_project` persists a stable
+`session_id`. All existing engine tests stay green (the adapter is transparent when id is `None`).
+
+## 10. Testing
 
 Vitest + React Testing Library, fully mocked — **no backend, no API credits**.
 
@@ -175,8 +208,20 @@ Vitest + React Testing Library, fully mocked — **no backend, no API credits**.
 A short manual smoke (run the real backend + `npm run dev`, add a real vendor) is documented in the
 plan as **user-triggered only** — it spends Tavily/Nebius credits and must never run in CI.
 
-## 10. File structure
+## 11. File structure
 
+**Backend (Phase 2 engine) files touched for §9:**
+```
+backend/src/vendor_dd/
+  surfaces/api/store.py    # + session_id column, Project.session_id, id generator
+  engine/pipeline.py       # ReportEngine(session_id=...) + search-injecting adapter
+  surfaces/api/routes.py   # stream_report passes the project's session_id
+  surfaces/cli.py          # per-run session_id
+backend/tests/
+  test_store.py, test_engine.py, test_api.py   # session_id coverage
+```
+
+**Frontend (new):**
 ```
 frontend/
   package.json
@@ -207,10 +252,12 @@ frontend/
   README.md                 # run instructions (dev server, env, test)
 ```
 
-## 11. Out of scope / future
+## 12. Out of scope / future
 
 - Chat-over-cached-`sources` (Phase 2 laid down the `sources` column for this; deferred by explicit
   scope decision).
+- Tavily `human_id` (user attribution) and `include_usage` credit accounting — the `session_id`
+  grouping (§9) is in scope; these two are noted for later.
 - Auth, multi-user, URL routing, mobile/responsive, real-time collaboration.
 - Serving the built frontend from FastAPI (dev runs Vite separately; a production build step is a
   later concern).
