@@ -33,3 +33,15 @@ test('the returned dispose closes the stream', () => {
   dispose()
   expect(es.closed).toBe(true)
 })
+
+test('a malformed frame closes the stream and calls onError instead of throwing', () => {
+  const onEvent = vi.fn()
+  const onError = vi.fn()
+  openReportStream(4, onEvent, onError)
+  const es = FakeEventSource.last()
+  // simulate a frame whose data isn't valid JSON, bypassing the fake's JSON.stringify helper
+  es.emitRaw('section_complete', '{not valid json')
+  expect(onEvent).not.toHaveBeenCalled()
+  expect(onError).toHaveBeenCalledOnce()
+  expect(es.closed).toBe(true)
+})
