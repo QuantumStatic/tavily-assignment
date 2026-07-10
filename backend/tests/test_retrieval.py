@@ -47,3 +47,24 @@ def test_retrieve_dimension_filters_contamination():
                               search=FakeSearchWithContamination(), today=date(2026, 7, 8))
     assert len(kept) == 1
     assert kept[0]["url"] == "https://news.com/a"
+
+
+def test_tavily_client_logs_request_and_response(tmp_path):
+    import json
+    from vendor_dd.logs import configure_logging
+    from vendor_dd.engine.tavily_client import TavilySearchClient
+    configure_logging(tmp_path, level="INFO")
+
+    class _FakeInner:
+        def search(self, **kwargs):
+            return {"results": [{"title": "t", "url": "u", "content": "c", "score": 0.5}]}
+
+    client = TavilySearchClient.__new__(TavilySearchClient)   # bypass real API-key init
+    client._client = _FakeInner()
+    client.search(query="acme legal", topic="general", max_results=5)
+
+    lines = [json.loads(l) for l in (tmp_path / "tavily.log").read_text().splitlines() if l.strip()]
+    events = [o["event"] for o in lines]
+    assert "tavily.request" in events and "tavily.response" in events
+    resp = next(o for o in lines if o["event"] == "tavily.response")
+    assert resp["payload"]["result_count"] == 1
