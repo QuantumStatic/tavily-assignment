@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import contextvars
+import queue
+import threading
+
 from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 
@@ -18,6 +22,8 @@ from vendor_dd.surfaces.api.store import Store, Vendor
 router = APIRouter()
 
 EXPECTED_SECTIONS = len([d for d in Dimension if d is not Dimension.SNAPSHOT])
+
+_STREAM_DONE = object()   # queue sentinel: report generation finished
 
 
 def _store(request: Request) -> Store:
@@ -130,11 +136,33 @@ def stream_report(vendor_id: int, request: Request):
     session_id = project.session_id if project else None
     engine = ReportEngine(request.app.state.deps, mode="parallel", session_id=session_id)
 
+    # Decouple the WORK from the STREAM. Generation runs in a background thread and drains
+    # to completion regardless of whether the client is still listening; the pipeline
+    # caches each section as it lands. So if the SSE breaks (e.g. the user switches
+    # projects) the report still finishes and is fully cached — coming back shows it done.
+    # The SSE below just tails the thread's events via a queue.
+    events: queue.Queue = queue.Queue()
+
+    def generate() -> None:
+        try:
+            for ev in engine.iter_events(vendor.name):
+                if isinstance(ev, EntityResolved):
+                    key = (ev.entity.domain or ev.entity.name).strip().lower()
+                    store.set_vendor_key(vendor_id, key)  # backfill so the read model can join
+                events.put(ev)
+        finally:
+            events.put(_STREAM_DONE)
+
+    # copy_context so the request's correlation id follows the work into the thread
+    ctx = contextvars.copy_context()
+    threading.Thread(target=lambda: ctx.run(generate),
+                     name=f"report-{vendor_id}", daemon=True).start()
+
     def event_source():
-        for ev in engine.iter_events(vendor.name):
-            if isinstance(ev, EntityResolved):
-                key = (ev.entity.domain or ev.entity.name).strip().lower()
-                store.set_vendor_key(vendor_id, key)  # backfill so the read model can join
+        while True:
+            ev = events.get()
+            if ev is _STREAM_DONE:
+                break
             yield to_sse_frame(ev)
 
     return EventSourceResponse(event_source())
