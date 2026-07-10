@@ -17,6 +17,10 @@ class LLMClient(Protocol):
     def structured(self, prompt: str, schema: type[T]) -> T: ...
 
 
+class LLMError(RuntimeError):
+    """The model returned an unusable response (empty/none content or invalid JSON)."""
+
+
 _NEBIUS_BASE_URL = "https://api.tokenfactory.us-central1.nebius.com/v1/"
 
 
@@ -75,6 +79,16 @@ def _usage_dict(usage) -> dict[str, Any] | None:
         return None
 
 
+def _extract_content(resp) -> str:
+    choices = getattr(resp, "choices", None) or []
+    if not choices:
+        raise LLMError("model returned no choices")
+    content = getattr(choices[0].message, "content", None)
+    if not content:
+        raise LLMError("model returned empty content")
+    return content
+
+
 class NebiusLLM:
     """Nebius Token Factory structured-output client: the raw OpenAI SDK's
     chat.completions endpoint with native `response_format=json_schema` — no tool
@@ -121,12 +135,17 @@ class NebiusLLM:
             },
             reasoning_effort="none",
         )
-        content = resp.choices[0].message.content
+        content = _extract_content(resp)
         latency_ms = round((time.monotonic() - started) * 1000)
         _LOG.info("llm.response", extra={"payload": {
             "model": self._model, "schema": schema.__name__,
             "latency_ms": latency_ms, "content": content,
             "usage": getattr(resp, "usage", None) and _usage_dict(resp.usage),
         }})
-        data = _coerce_null_strings(json.loads(content), json_schema)
-        return schema.model_validate(data)
+        try:
+            data = _coerce_null_strings(json.loads(content), json_schema)
+            return schema.model_validate(data)
+        except (json.JSONDecodeError, ValueError) as exc:
+            _LOG.error("llm.error", extra={"payload": {"schema": schema.__name__, "content": content,
+                                                        "error": str(exc)}})
+            raise LLMError(f"{schema.__name__}: model returned unparseable/invalid JSON") from exc
