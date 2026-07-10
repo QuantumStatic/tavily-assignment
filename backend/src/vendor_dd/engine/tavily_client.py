@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import date, timedelta
 from typing import Any, Protocol
 
@@ -7,6 +8,9 @@ from tavily import TavilyClient
 
 from vendor_dd.engine.config import DIMENSION_CONFIGS
 from vendor_dd.engine.schemas import Dimension, EntityCard
+from vendor_dd.logs import get_logger
+
+_LOG = get_logger("tavily")
 
 
 class SearchClient(Protocol):
@@ -44,4 +48,18 @@ class TavilySearchClient:
         self._client = TavilyClient(api_key=api_key)
 
     def search(self, **kwargs: Any) -> dict[str, Any]:
-        return self._client.search(**kwargs)
+        _LOG.info("tavily.request", extra={"payload": {k: v for k, v in kwargs.items()}})
+        started = time.monotonic()
+        try:
+            resp = self._client.search(**kwargs)
+        except Exception as exc:
+            _LOG.error("tavily.error", extra={"payload": {
+                "query": kwargs.get("query"), "error": str(exc)}})
+            raise
+        latency_ms = round((time.monotonic() - started) * 1000)
+        results = resp.get("results", []) if isinstance(resp, dict) else []
+        _LOG.info("tavily.response", extra={"payload": {
+            "query": kwargs.get("query"), "result_count": len(results),
+            "latency_ms": latency_ms, "results": results[:10],
+        }})
+        return resp
