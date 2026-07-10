@@ -21,8 +21,8 @@ test('renders a header per dimension plus vendor + verdict', () => {
 test('each dimension header has a help badge explaining it and the score direction', () => {
   render(<VendorTable rows={[]} onSelect={() => {}} onDelete={() => {}} />)
   const legalHelp = screen.getByLabelText(/litigation, lawsuits/i)
-  expect(legalHelp).toHaveTextContent('?')
-  expect(legalHelp).toHaveAttribute('title', expect.stringMatching(/10 = clean record; 0 = serious/i))
+  // the tooltip text is rendered in the DOM (CSS shows it on hover/focus)
+  expect(legalHelp).toHaveTextContent(/10 = clean record; 0 = serious/i)
   // verdict column explains the overall score direction too
   expect(screen.getByLabelText(/overall due-diligence score/i)).toBeInTheDocument()
 })
