@@ -59,7 +59,7 @@ test('add a vendor, watch cells stream in, open the report panel', async () => {
   render(<App />)
 
   // project loads into the sidebar and auto-selects
-  await screen.findByText('Bridge job')
+  await screen.findByRole('heading', { name: 'Bridge job' })
 
   // add a vendor -> POST then a stream opens
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
@@ -120,6 +120,7 @@ test('selecting an already-generated vendor fetches its report from the REST end
   const { fetchMock } = mockApi({ projects, projectDetails, vendorReports })
   render(<App />)
 
+  await screen.findByRole('heading', { name: 'Bridge job' })
   const row = await screen.findByText('Cives Steel')
   await userEvent.click(row)
 
@@ -139,7 +140,7 @@ test('switching the active project closes the previous project\'s open streams',
   mockApi({ projects, projectDetails })
   render(<App />)
 
-  await screen.findByText('Bridge job')
+  await screen.findByRole('heading', { name: 'Bridge job' })
 
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
@@ -152,7 +153,7 @@ test('switching the active project closes the previous project\'s open streams',
   })
   expect(es.closed).toBe(false)
 
-  await userEvent.click(screen.getByText('Tunnel job'))
+  await userEvent.click(screen.getByRole('button', { name: /Tunnel job/ }))
   await waitFor(() => expect(es.closed).toBe(true))
 })
 
@@ -162,7 +163,7 @@ test('a failed vendor deletion surfaces an error and keeps the row', async () =>
   })
   render(<App />)
 
-  await screen.findByText('Bridge job')
+  await screen.findByRole('heading', { name: 'Bridge job' })
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
   await screen.findByText('Cives Steel')

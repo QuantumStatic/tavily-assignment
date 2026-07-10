@@ -156,7 +156,7 @@ export default function App() {
         {activeProject ? (
           <>
             <div className="toolbar">
-              <h3>Vendors</h3>
+              <h3>{activeProject.name}</h3>
               <AddVendorForm onAdd={addVendor} />
             </div>
             <VendorTable rows={sortedRows} onSelect={selectVendor} onDelete={removeVendor} />
