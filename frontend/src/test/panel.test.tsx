@@ -52,6 +52,24 @@ test('a done row with no report yet (partial completeness) shows a still-generat
   expect(screen.getByText(/still generating.*2 of 7 dimensions complete/i)).toBeInTheDocument()
 })
 
+test('omits the "as of" suffix when a citation has no date', () => {
+  const noDate = {
+    ...row,
+    report: {
+      ...row.report!,
+      sections: [{
+        dimension: 'legal', score: 8, reasoning: 'clean',
+        findings: [{ claim: 'No litigation.',
+                     citation: { url: 'https://pacer.gov', title: 'PACER', source_type: 'independent', score: 0.9, as_of: null } }],
+      }],
+    },
+  }
+  render(<ReportPanel row={noDate} onClose={() => {}} />)
+  expect(screen.queryByText(/as of/i)).not.toBeInTheDocument()
+  expect(screen.queryByText(/n\/a/i)).not.toBeInTheDocument()
+  expect(screen.getByText('independent')).toBeInTheDocument()
+})
+
 test('renders a safe https citation link', () => {
   render(<ReportPanel row={row} onClose={() => {}} />)
   expect(screen.getByRole('link', { name: /pacer/i })).toHaveAttribute('href', 'https://pacer.gov')

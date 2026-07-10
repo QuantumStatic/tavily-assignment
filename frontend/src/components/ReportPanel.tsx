@@ -108,7 +108,8 @@ export function ReportPanel({ row, onClose }: { row: RowState; onClose: () => vo
                       <span className="cite-meta">{f.citation.title} (link unavailable)</span>
                     )}
                     <span className="cite-meta">
-                      {f.citation.source_type} · as of {f.citation.as_of ?? 'n/a'}
+                      {f.citation.source_type}
+                      {f.citation.as_of ? ` · as of ${f.citation.as_of}` : ''}
                     </span>
                   </div>
                 ))}
