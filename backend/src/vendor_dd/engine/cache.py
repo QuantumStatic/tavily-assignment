@@ -8,6 +8,9 @@ from typing import Any, Callable
 
 from vendor_dd.engine.schemas import Dimension
 from vendor_dd.engine.config import TTL
+from vendor_dd.logs import get_logger
+
+_LOG = get_logger("db")
 
 
 def _utcnow() -> datetime:
@@ -20,7 +23,7 @@ class SQLiteCache:
     def __init__(self, path: str | Path, clock: Callable[[], datetime] = _utcnow):
         self._clock = clock
         self._conn = sqlite3.connect(str(path), check_same_thread=False)
-        self._conn.execute(
+        self._exec(
             """CREATE TABLE IF NOT EXISTS report_cache (
                  vendor_key TEXT NOT NULL,
                  section_type TEXT NOT NULL,
@@ -32,9 +35,17 @@ class SQLiteCache:
         )
         self._conn.commit()
 
+    def _exec(self, sql: str, params: tuple = ()):
+        cur = self._conn.execute(sql, params)
+        _LOG.info("db.query", extra={"payload": {
+            "sql": " ".join(sql.split()), "params": list(params),
+            "rowcount": cur.rowcount, "lastrowid": cur.lastrowid,
+        }})
+        return cur
+
     def put(self, vendor_key: str, section: Dimension, content: dict[str, Any],
             sources: list[dict[str, Any]] | None = None) -> None:
-        self._conn.execute(
+        self._exec(
             """REPLACE INTO report_cache (vendor_key, section_type, content, sources, fetched_at)
                VALUES (?,?,?,?,?)""",
             (vendor_key, section.value, json.dumps(content),
@@ -44,7 +55,7 @@ class SQLiteCache:
         self._conn.commit()
 
     def _row(self, vendor_key: str, section: Dimension) -> tuple[str, datetime] | None:
-        cur = self._conn.execute(
+        cur = self._exec(
             "SELECT content, fetched_at FROM report_cache WHERE vendor_key=? AND section_type=?",
             (vendor_key, section.value),
         )
@@ -72,7 +83,7 @@ class SQLiteCache:
     def all_sections(self, vendor_key: str) -> dict[Dimension, tuple[dict[str, Any], datetime]]:
         """Every stored section for a vendor with its fetched_at, ignoring TTL.
         Freshness is a UI concern; the comparison table shows whatever's cached."""
-        cur = self._conn.execute(
+        cur = self._exec(
             "SELECT section_type, content, fetched_at FROM report_cache WHERE vendor_key=?",
             (vendor_key,),
         )

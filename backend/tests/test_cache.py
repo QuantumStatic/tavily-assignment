@@ -71,3 +71,13 @@ def test_close_closes_connection(tmp_path):
         assert False, "expected an error after close()"
     except sqlite3.ProgrammingError:
         pass
+
+
+def test_cache_logs_sql_queries(tmp_path):
+    import json
+    from vendor_dd.logs import configure_logging
+    configure_logging(tmp_path / "logs", level="INFO")
+    cache = SQLiteCache(tmp_path / "c.db", clock=_now)
+    cache.put("acme.com", Dimension.LEGAL, {"score": 5})
+    lines = [json.loads(l) for l in (tmp_path / "logs" / "db.log").read_text().splitlines() if l.strip()]
+    assert any(o["event"] == "db.query" and "report_cache" in o["payload"]["sql"] for o in lines)
