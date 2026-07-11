@@ -204,7 +204,8 @@ def stream_report(vendor_id: int, request: Request):
     if created:
         project = store.get_project(vendor.project_id)
         session_id = project.session_id if project else None
-        engine = ReportEngine(request.app.state.deps, mode="parallel", session_id=session_id)
+        engine = ReportEngine(request.app.state.deps, mode="parallel", session_id=session_id,
+                              domain_locks=request.app.state.domain_locks)
 
         # Decouple the WORK from the STREAM. Generation runs in a background thread
         # and drains to completion regardless of listeners; the pipeline caches each

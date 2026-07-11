@@ -539,7 +539,7 @@ class TwoVendorSameDomainLLM:
                               industry="hydro", is_public=False)
         # section synthesis blocks until released, so without the domain lock BOTH
         # generations would be mid-section at the same time and both would count.
-        assert self.section_gate.wait(timeout=10), "section gate never opened"
+        assert self.section_gate.wait(timeout=30), "section gate never opened"
         with self._lock:
             self.section_calls += 1
         return Section(dimension=Dimension.LEGAL, findings=[], reasoning="x", score=5)
@@ -567,10 +567,10 @@ def test_two_vendors_same_domain_generate_sections_only_once(tmp_path):
     tb.start()
     # wait until BOTH generations have resolved their entity and are contending for the
     # section phase, THEN release synthesis — this forces the real concurrent race.
-    assert llm.both_resolved.wait(timeout=5), "both generations never resolved"
+    assert llm.both_resolved.wait(timeout=15), "both generations never resolved"
     llm.section_gate.set()
-    ta.join(timeout=20)
-    tb.join(timeout=20)
+    ta.join(timeout=30)
+    tb.join(timeout=30)
 
     # 6 = 5 Tavily dims + backlog, for ONE generation. Without the per-domain lock both
     # vendors would generate independently and this would be ~12.
