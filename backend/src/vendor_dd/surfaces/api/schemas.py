@@ -13,6 +13,10 @@ class VendorIn(BaseModel):
     name: str
 
 
+class ChosenIn(BaseModel):
+    chosen: bool
+
+
 class ProjectOut(BaseModel):
     id: int
     name: str
@@ -26,6 +30,7 @@ class VendorOut(BaseModel):
     vendor_key: str | None = None
     created_at: str
     existed: bool = False   # True when POST /vendors returned an already-present row
+    chosen: bool = False
 
 
 class DimensionScore(BaseModel):
@@ -45,6 +50,7 @@ class VendorSummary(BaseModel):
     sections_present: int = 0
     sections_expected: int = 7  # keep in sync with routes.EXPECTED_SECTIONS; every route sets this explicitly
     duplicate_of: str | None = None   # earlier same-project vendor resolving to the same domain
+    chosen: bool = False
 
 
 class ProjectDetail(BaseModel):

@@ -14,7 +14,7 @@ from vendor_dd.engine.schemas import Dimension, EntityCard, Section
 from vendor_dd.engine.synthesis import assemble_verdict
 from vendor_dd.surfaces.api.runs import DONE, RunRegistry
 from vendor_dd.surfaces.api.schemas import (
-    DimensionScore, ProjectDetail, ProjectIn, ProjectOut, VendorIn, VendorOut,
+    ChosenIn, DimensionScore, ProjectDetail, ProjectIn, ProjectOut, VendorIn, VendorOut,
     VendorReport, VendorSummary,
 )
 from vendor_dd.surfaces.api.sse import to_sse_frame
@@ -51,14 +51,16 @@ def _summarize(vendor: Vendor, cache: SQLiteCache) -> VendorSummary:
     if not parsed:
         return VendorSummary(vendor_id=vendor.id, name=vendor.name, vendor_key=vendor.vendor_key,
                              generated=False, verdict_score=None, verdict_reasoning=None,
-                             dimensions=[], sections_present=0, sections_expected=EXPECTED_SECTIONS)
+                             dimensions=[], sections_present=0, sections_expected=EXPECTED_SECTIONS,
+                             chosen=vendor.chosen)
     sections = [sec for sec, _ in parsed.values()]
     score, reasoning = assemble_verdict(sections)
     dims = [DimensionScore(dimension=d, score=sec.score, as_of=ts.isoformat())
             for d, (sec, ts) in parsed.items()]
     return VendorSummary(vendor_id=vendor.id, name=vendor.name, vendor_key=vendor.vendor_key,
                          generated=True, verdict_score=score, verdict_reasoning=reasoning,
-                         dimensions=dims, sections_present=len(parsed), sections_expected=EXPECTED_SECTIONS)
+                         dimensions=dims, sections_present=len(parsed), sections_expected=EXPECTED_SECTIONS,
+                         chosen=vendor.chosen)
 
 
 def _clean_name(raw: str) -> str:
@@ -119,7 +121,8 @@ def delete_project(project_id: int, request: Request):
 
 def _vendor_out(v: Vendor, *, existed: bool) -> VendorOut:
     return VendorOut(id=v.id, project_id=v.project_id, name=v.name,
-                     vendor_key=v.vendor_key, created_at=v.created_at, existed=existed)
+                     vendor_key=v.vendor_key, created_at=v.created_at, existed=existed,
+                     chosen=v.chosen)
 
 
 @router.post("/projects/{project_id}/vendors", response_model=VendorOut)
@@ -165,6 +168,14 @@ def remove_vendor(vendor_id: int, request: Request):
         raise HTTPException(status_code=404, detail="vendor not found")
     store.remove_vendor(vendor_id)
     return {"ok": True}
+
+
+@router.patch("/vendors/{vendor_id}/chosen", response_model=VendorOut)
+def set_chosen(vendor_id: int, body: ChosenIn, request: Request):
+    v = _store(request).set_chosen(vendor_id, body.chosen)
+    if v is None:
+        raise HTTPException(status_code=404, detail="vendor not found")
+    return _vendor_out(v, existed=True)
 
 
 @router.get("/vendors/{vendor_id}/report", response_model=VendorReport)
