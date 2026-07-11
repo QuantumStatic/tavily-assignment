@@ -233,6 +233,22 @@ test('switching the active project closes the previous project\'s open streams',
   await waitFor(() => expect(es.closed).toBe(true))
 })
 
+test('adding a duplicate vendor surfaces the API message and adds no row', async () => {
+  mockApi({
+    addVendor: async () => ({
+      ok: false, status: 409, json: async () => ({ detail: 'Vendor already added to this project' }),
+    }),
+  })
+  render(<App />)
+
+  await screen.findByRole('heading', { name: 'Bridge job' })
+  await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
+  await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
+
+  await screen.findByText(/already added to this project/i)
+  expect(screen.queryByText('Cives Steel')).not.toBeInTheDocument()   // no row added
+})
+
 test('a successful vendor deletion closes its stream and removes the row', async () => {
   mockApi()
   render(<App />)
