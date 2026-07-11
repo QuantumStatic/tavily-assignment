@@ -262,3 +262,28 @@ def test_read_model_reports_section_completeness(tmp_path):
     assert summ["sections_present"] == 2 and summ["sections_expected"] == 6
     report = client.get(f"/vendors/{vid}/report").json()
     assert report["sections_present"] == 2 and report["sections_expected"] == 6
+
+
+def test_add_vendor_lost_race_falls_back_to_the_existing_row(tmp_path, monkeypatch):
+    """If the pre-insert duplicate check misses (concurrent add), the DB constraint
+    rejects the insert and the route returns the winner's row instead of a 500."""
+    from vendor_dd.surfaces.api.store import Store
+
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    first = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()
+
+    real = Store.find_vendor
+    calls = {"n": 0}
+
+    def racy(self, project_id, name):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None   # simulate the check running before the concurrent insert landed
+        return real(self, project_id, name)
+
+    monkeypatch.setattr(Store, "find_vendor", racy)
+    dup = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"})
+    assert dup.status_code == 200
+    assert dup.json()["existed"] is True
+    assert dup.json()["id"] == first["id"]

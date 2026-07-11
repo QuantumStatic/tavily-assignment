@@ -172,3 +172,18 @@ def test_store_enables_wal_and_busy_timeout(tmp_path):
     timeout = store._conn.execute("PRAGMA busy_timeout").fetchone()[0]
     assert mode.lower() == "wal"
     assert timeout >= 3000
+
+
+def test_store_enforces_unique_vendor_name_per_project(tmp_path):
+    import sqlite3
+
+    import pytest
+
+    store = _store(tmp_path)
+    p = store.create_project("p")
+    store.add_vendor(p.id, "Cives Steel")
+    with pytest.raises(sqlite3.IntegrityError):
+        store.add_vendor(p.id, "  cives STEEL ")   # case/space variant of the same name
+    # the same name in a different project is a legitimate new row
+    p2 = store.create_project("p2")
+    assert store.add_vendor(p2.id, "Cives Steel").id > 0

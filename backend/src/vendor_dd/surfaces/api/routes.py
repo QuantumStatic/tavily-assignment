@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextvars
 import queue
+import sqlite3
 import threading
 
 from fastapi import APIRouter, HTTPException, Request
@@ -83,6 +84,11 @@ def get_project(project_id: int, request: Request):
                          vendors=vendors)
 
 
+def _vendor_out(v: Vendor, *, existed: bool) -> VendorOut:
+    return VendorOut(id=v.id, project_id=v.project_id, name=v.name,
+                     vendor_key=v.vendor_key, created_at=v.created_at, existed=existed)
+
+
 @router.post("/projects/{project_id}/vendors", response_model=VendorOut)
 def add_vendor(project_id: int, body: VendorIn, request: Request):
     store = _store(request)
@@ -92,12 +98,16 @@ def add_vendor(project_id: int, body: VendorIn, request: Request):
     # (no duplicate, no re-triggered research) instead of erroring or inserting again.
     existing = store.find_vendor(project_id, body.name)
     if existing is not None:
-        return VendorOut(id=existing.id, project_id=existing.project_id, name=existing.name,
-                         vendor_key=existing.vendor_key, created_at=existing.created_at,
-                         existed=True)
-    v = store.add_vendor(project_id, body.name)
-    return VendorOut(id=v.id, project_id=v.project_id, name=v.name,
-                     vendor_key=v.vendor_key, created_at=v.created_at, existed=False)
+        return _vendor_out(existing, existed=True)
+    try:
+        v = store.add_vendor(project_id, body.name)
+    except sqlite3.IntegrityError:
+        # lost a race with a concurrent identical add — return the winner's row
+        winner = store.find_vendor(project_id, body.name)
+        if winner is None:   # can't happen: the constraint that fired proves the row exists
+            raise HTTPException(status_code=409, detail="vendor already added")
+        return _vendor_out(winner, existed=True)
+    return _vendor_out(v, existed=False)
 
 
 @router.delete("/vendors/{vendor_id}")
