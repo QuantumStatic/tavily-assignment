@@ -49,6 +49,21 @@ def test_cached_sections_are_not_re_recorded(tmp_path):
     assert day2.scores_for("acme.com")["legal"][1] == "2026-06-01"
 
 
+def test_all_cached_report_does_not_record_a_new_verdict(tmp_path):
+    deps = _deps(tmp_path)
+    # First run on day 1 seeds cache + history, including the verdict.
+    day1 = ScoreHistory(tmp_path / "db.sqlite", clock=lambda: date(2026, 6, 1))
+    list(ReportEngine(deps, mode="sequential", history=day1).iter_events("Acme"))
+
+    # Second run on day 2: every section + backlog is served from cache, so the
+    # whole report is cache-fresh -> the verdict must NOT get a new day-2 row.
+    day2 = ScoreHistory(tmp_path / "db.sqlite", clock=lambda: date(2026, 6, 2))
+    list(ReportEngine(deps, mode="sequential", history=day2).iter_events("Acme"))
+
+    assert day2.previous("acme.com", "verdict") is None
+    assert day2.scores_for("acme.com")["verdict"][1] == "2026-06-01"
+
+
 def test_history_is_optional(tmp_path):
     # no history passed -> generation still works (CLI/unit path)
     deps = _deps(tmp_path)

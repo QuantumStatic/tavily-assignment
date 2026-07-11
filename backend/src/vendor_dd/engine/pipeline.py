@@ -131,6 +131,7 @@ class ReportEngine:
             cache.put(vendor_key, Dimension.SNAPSHOT, entity.model_dump(mode="json"))
             sections: list[Section] = []
             news_results: list[dict] | None = None
+            any_fresh = False
 
             # Single-flight the expensive section+backlog work by domain: a concurrent
             # generation for another vendor that resolves to the SAME domain blocks here,
@@ -159,6 +160,7 @@ class ReportEngine:
                         cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
                                   sources=outcome.raw_results)
                         self._record_score(vendor_key, dim.value, outcome.section.score)
+                        any_fresh = True
                         if dim is Dimension.NEWS:
                             news_results = outcome.raw_results
                         sections.append(outcome.section)
@@ -174,13 +176,15 @@ class ReportEngine:
                 sections.append(backlog)
                 if not backlog_cached:
                     self._record_score(vendor_key, Dimension.BACKLOG.value, backlog.score)
+                    any_fresh = True
                 yield SectionComplete(section=backlog, cached=backlog_cached)
 
             try:
                 score, reasoning = assemble_verdict(sections)
                 report = Report(vendor_input=vendor, entity=entity, sections=sections,
                                 verdict_score=score, verdict_reasoning=reasoning)
-                self._record_score(vendor_key, "verdict", score)
+                if any_fresh:
+                    self._record_score(vendor_key, "verdict", score)
             except Exception as exc:  # fatal: no report without a verdict
                 _LOG.error("report.error", extra={"payload": {"stage": "verdict", "error": str(exc)}})
                 yield ReportError(message="report could not be generated")
