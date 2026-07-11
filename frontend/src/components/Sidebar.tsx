@@ -1,19 +1,20 @@
 import { useState } from 'react'
 import type { Project } from '../types'
+import { filterByName } from '../filter'
 
 export function Sidebar({
-  projects, activeId, onSelect, onCreate, onDelete,
+  projects, activeId, onSelect, onCreate, onDelete, onOverview,
 }: {
   projects: Project[]
   activeId: number | null
   onSelect: (id: number) => void
   onCreate: (name: string) => void
   onDelete: (id: number) => void
+  onOverview: () => void
 }) {
   const [query, setQuery] = useState('')
   const q = query.trim()
-  const ql = q.toLowerCase()
-  const filtered = q ? projects.filter((p) => p.name.toLowerCase().includes(ql)) : projects
+  const filtered = filterByName(projects, q)
   // offer to create only when the query matches no existing project at all
   const showCreate = q !== '' && filtered.length === 0
 
@@ -25,6 +26,12 @@ export function Sidebar({
 
   return (
     <aside className="sidebar">
+      <button
+        className={`overview-entry${activeId === null ? ' active' : ''}`}
+        onClick={onOverview}
+      >
+        ▤ Overview
+      </button>
       <h4>Projects</h4>
       <input
         className="project-search"

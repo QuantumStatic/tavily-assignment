@@ -12,13 +12,14 @@ function HelpBadge({ text }: { text: string }) {
 }
 
 export function VendorTable({
-  rows, onSelect, onDelete, onRename, onResume,
+  rows, onSelect, onDelete, onRename, onResume, onChosen,
 }: {
   rows: RowState[]
   onSelect: (id: number) => void
   onDelete: (id: number) => void
   onRename: (id: number, name: string) => void
   onResume: (id: number) => void
+  onChosen: (id: number, chosen: boolean) => void
 }) {
   return (
     <div className="table-scroll">
@@ -44,7 +45,7 @@ export function VendorTable({
             </tr>
           ) : (
             rows.map((r) => (
-              <VendorRow key={r.vendorId} row={r} onSelect={onSelect} onDelete={onDelete} onRename={onRename} onResume={onResume} />
+              <VendorRow key={r.vendorId} row={r} onSelect={onSelect} onDelete={onDelete} onRename={onRename} onResume={onResume} onChosen={onChosen} />
             ))
           )}
         </tbody>

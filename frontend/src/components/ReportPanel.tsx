@@ -74,6 +74,12 @@ export function ReportPanel({ row, onClose }: { row: RowState; onClose: () => vo
           {typeof verdict === 'object' && (
             <span className={`pill ${bandForScore(verdict.score)}`}> {verdict.score}/10</span>
           )}
+          {typeof row.projectsCount === 'number' && row.projectsCount > 0 && (
+            <div className="panel-trust">
+              In {row.projectsCount} project{row.projectsCount === 1 ? '' : 's'}
+              {row.chosenCount ? ` · chosen ${row.chosenCount}×` : ''}
+            </div>
+          )}
         </div>
         <button className="link-btn" onClick={onClose} aria-label="Close">✕</button>
       </div>
@@ -96,7 +102,13 @@ export function ReportPanel({ row, onClose }: { row: RowState; onClose: () => vo
             <Markdown className="verdict-reason md" text={report.verdict_reasoning} />
             {report.sections.map((s) => (
               <section key={s.dimension} className="report-section">
-                <h5>{LABEL.get(s.dimension) ?? s.dimension} · {s.score}/10</h5>
+                <h5>{LABEL.get(s.dimension) ?? s.dimension} · {s.score}/10
+                  {row.deltas?.[s.dimension] && (
+                    <span className="delta">
+                      {' '}{s.score >= row.deltas[s.dimension]!.score ? '▲' : '▼'} was {row.deltas[s.dimension]!.score}
+                    </span>
+                  )}
+                </h5>
                 <Markdown className="muted md" text={s.reasoning} />
                 {s.findings.map((f, i) => (
                   <div key={i} className="finding">

@@ -49,6 +49,19 @@ function mockApi(opts: MockApiOptions = {}) {
       const report = vendorReports[id]
       if (report) return { ok: true, json: async () => report }
     }
+    if (u.match(/\/stats(\?|$)/) && method === 'GET') {
+      return {
+        ok: true, json: async () => ({
+          projects_total: projects.length, projects_selected: projects.length,
+          vendors_total: 0, vendors_generated: 0,
+          avg_verdict: null, risk_high: 0, risk_watch: 0, risk_cleared: 0,
+          independent_sources: 0, self_reported_sources: 0,
+          verdict_histogram: Array(11).fill(0), dimension_avgs: {}, dimension_histograms: {},
+          weakest_dimension: null, weakest_low_count: 0,
+          shortlist: [], red_flags: [], most_trusted: [],
+        }),
+      }
+    }
     const deleteMatch = u.match(/\/vendors\/(\d+)$/)
     if (deleteMatch && method === 'DELETE') {
       const id = Number(deleteMatch[1])
@@ -64,13 +77,20 @@ function mockApi(opts: MockApiOptions = {}) {
 beforeEach(() => FakeEventSource.reset())
 afterEach(() => vi.restoreAllMocks())
 
+// App now lands on the Overview (activeId === null) and no longer auto-selects the
+// first project, so tests must explicitly navigate into a project via the sidebar.
+async function openProject(name: string) {
+  await userEvent.click(await screen.findByText(name))
+  await screen.findByRole('heading', { name })
+}
+
 test('the theme toggle is present regardless of whether a project is active', async () => {
   mockApi({ projects: [] })
   render(<App />)
 
-  // no projects yet -> empty state, but the toggle still renders in the toolbar
-  await screen.findByText('Projects')
-  expect(document.querySelector('.main .empty')).toHaveTextContent('Select a project, or create one to begin.')
+  // no projects yet -> lands on the Overview, but the toggle still renders in the toolbar
+  await screen.findByRole('heading', { name: 'Overview' })
+  expect(screen.getByText(/select at least one project/i)).toBeInTheDocument()
   expect(screen.getByRole('button', { name: /switch to (dark|light) mode/i })).toBeInTheDocument()
 })
 
@@ -79,7 +99,7 @@ test('add a vendor, watch cells stream in, open the report panel', async () => {
   render(<App />)
 
   // project loads into the sidebar and auto-selects
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
 
   // the theme toggle is still present when a project is active
   expect(screen.getByRole('button', { name: /switch to (dark|light) mode/i })).toBeInTheDocument()
@@ -132,7 +152,7 @@ test('a dropped SSE stream falls back to polling the report, not failing the row
   mockApi({ vendorReports: { 5: completedReport } })
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
   await screen.findByText('Cives Steel')
@@ -155,7 +175,7 @@ test('while the polled report is still generating, the row keeps streaming', asy
                                    verdict_score: null, verdict_reasoning: null, entity: null } } })
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
   await screen.findByText('Cives Steel')
@@ -203,7 +223,7 @@ test('selecting an already-generated vendor fetches its report from the REST end
   const { fetchMock } = mockApi({ projects, projectDetails, vendorReports })
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
   const row = await screen.findByText('Cives Steel')
   await userEvent.click(row)
 
@@ -237,7 +257,7 @@ test('selecting a partially-generated vendor shows a still-generating note inste
   mockApi({ projects, projectDetails, vendorReports })
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
   const row = await screen.findByText('Cives Steel')
   await userEvent.click(row)
 
@@ -257,7 +277,7 @@ test('switching the active project closes the previous project\'s open streams',
   mockApi({ projects, projectDetails })
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
 
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
@@ -298,7 +318,7 @@ test('adding an already-present vendor reuses the row and opens its report, no n
   })
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
   await screen.findByText('Cives Steel')   // the row is already there before we "add" it
 
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
@@ -315,7 +335,7 @@ test('a successful vendor deletion closes its stream and removes the row', async
   mockApi()
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
   await screen.findByText('Cives Steel')
@@ -339,7 +359,7 @@ test('a failed vendor deletion surfaces an error and keeps the row', async () =>
   })
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
   await screen.findByText('Cives Steel')
@@ -369,7 +389,7 @@ test('deleting a vendor that is already gone (404) still removes the row, no err
   })
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
   await screen.findByText('Cives Steel')
@@ -401,7 +421,7 @@ test('a vendor add that resolves after switching projects does not appear in the
   })
   render(<App />)
 
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
 
   // add a vendor to project 1 (POST pending)
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
@@ -432,7 +452,7 @@ test('deleting the active project removes it and falls back to another project',
     },
   })
   render(<App />)
-  await screen.findByRole('heading', { name: 'Bridge job' })
+  await openProject('Bridge job')
 
   await userEvent.click(screen.getByRole('button', { name: /delete project bridge job/i }))
 
@@ -453,6 +473,7 @@ test('renaming a vendor PATCHes the API and updates the row in place', async () 
     projectDetails: { 1: { id: 1, name: 'Bridge job', created_at: 't', vendors: [doneVendor] } },
   })
   render(<App />)
+  await openProject('Bridge job')
   await screen.findByText('Cives Stel')
 
   await userEvent.click(screen.getByRole('button', { name: /rename vendor/i }))
@@ -478,6 +499,7 @@ test('a partial report row offers resume, and clicking it re-opens the stream', 
     projectDetails: { 1: { id: 1, name: 'Bridge job', created_at: 't', vendors: [partialVendor] } },
   })
   render(<App />)
+  await openProject('Bridge job')
   await screen.findByText('Voith')
 
   await userEvent.click(screen.getByRole('button', { name: /resume research/i }))
@@ -497,6 +519,7 @@ test('a fully generated row does not offer resume', async () => {
       vendors: [{ ...partialVendor, sections_present: 6 }] } },
   })
   render(<App />)
+  await openProject('Bridge job')
   await screen.findByText('Voith')
   expect(screen.queryByRole('button', { name: /resume research/i })).toBeNull()
 })
@@ -509,6 +532,7 @@ test('a domain-level duplicate row shows a badge naming the canonical vendor', a
     ] } },
   })
   render(<App />)
+  await openProject('Bridge job')
   await screen.findByText('Voith Hydro')
   const badge = screen.getByTitle(/same company as Voith/i)
   expect(badge).toBeInTheDocument()

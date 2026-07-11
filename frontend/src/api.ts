@@ -1,4 +1,5 @@
 import type { Project, ProjectDetail, VendorOut, VendorReport } from './types'
+import type { DashboardStats } from './dashboard'
 
 const BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
@@ -51,4 +52,12 @@ export const api = {
       if (r.status === 404) return undefined   // already gone -> desired outcome
       return ensureOk(r).then(() => undefined)
     }),
+  getStats: (projectIds?: number[]) => {
+    const q = projectIds && projectIds.length ? `?projects=${projectIds.join(',')}` : ''
+    return fetch(`${BASE}/stats${q}`).then(json<DashboardStats>)
+  },
+  setChosen: (id: number, chosen: boolean) =>
+    fetch(`${BASE}/vendors/${id}/chosen`, {
+      method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ chosen }),
+    }).then(json<VendorOut>),
 }

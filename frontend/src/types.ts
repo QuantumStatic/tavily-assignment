@@ -13,6 +13,7 @@ export interface VendorSummary {
   verdict_reasoning: string | null
   dimensions: DimensionScore[]
   duplicate_of?: string | null
+  chosen: boolean
 }
 
 export interface ProjectDetail {
@@ -22,6 +23,7 @@ export interface ProjectDetail {
 export interface VendorOut {
   id: number; project_id: number; name: string; vendor_key: string | null; created_at: string
   existed: boolean   // true when this name was already in the project — same row, no new research
+  chosen: boolean
 }
 
 export interface Citation {
@@ -35,6 +37,8 @@ export interface EntityCard {
   parent: string | null; is_public: boolean; ticker: string | null; exchange: string | null
 }
 
+export interface DimensionDelta { score: number; recorded_on: string }
+
 export interface VendorReport {
   generated: boolean
   vendor_key: string | null
@@ -44,6 +48,9 @@ export interface VendorReport {
   verdict_score: number | null
   verdict_reasoning: string | null
   sections: Section[]
+  chosen_count?: number
+  projects_count?: number
+  dimension_deltas?: Record<string, DimensionDelta | null>
 }
 
 // The engine Report carried in a report_complete SSE frame.

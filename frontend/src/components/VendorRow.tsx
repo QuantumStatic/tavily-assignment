@@ -5,13 +5,14 @@ import { DimensionCell } from './DimensionCell'
 import { bandForScore } from '../band'
 
 export function VendorRow({
-  row, onSelect, onDelete, onRename, onResume,
+  row, onSelect, onDelete, onRename, onResume, onChosen,
 }: {
   row: RowState
   onSelect: (id: number) => void
   onDelete: (id: number) => void
   onRename: (id: number, name: string) => void
   onResume: (id: number) => void
+  onChosen: (id: number, chosen: boolean) => void
 }) {
   const [draft, setDraft] = useState<string | null>(null)   // non-null while editing
   const verdict = row.verdict
@@ -98,6 +99,14 @@ export function VendorRow({
             ⟳
           </button>
         )}
+        <button
+          className={`icon-btn chosen-btn${row.chosen ? ' is-chosen' : ''}`}
+          aria-label={row.chosen ? `Unmark ${row.name} as chosen` : `Mark ${row.name} as chosen`}
+          title={row.chosen ? 'Chosen — click to unmark' : 'Mark as chosen'}
+          onClick={(e) => { e.stopPropagation(); onChosen(row.vendorId, !row.chosen) }}
+        >
+          {row.chosen ? '★' : '☆'}
+        </button>
         <button
           className="delete-btn"
           aria-label="Delete vendor"
