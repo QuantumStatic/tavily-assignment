@@ -6,7 +6,7 @@ import type { VendorSummary, VendorReport } from '../types'
 const summary = (over: Partial<VendorSummary> = {}): VendorSummary => ({
   vendor_id: 1, name: 'Cives', vendor_key: 'cives.com', generated: false,
   sections_present: 0, sections_expected: 7,
-  verdict_score: null, verdict_reasoning: null, dimensions: [], ...over,
+  verdict_score: null, verdict_reasoning: null, dimensions: [], chosen: false, ...over,
 })
 
 test('rowFromSummary: not generated -> idle cells, idle verdict', () => {
@@ -99,7 +99,7 @@ const streamingRow = (): RowState => ({
   vendorId: 5, name: 'Cives Steel', vendorKey: null,
   cells: { legal: 'pending', financial: 'pending', safety: 'pending',
            certifications: 'pending', backlog: 'pending', news: 'pending' },
-  verdict: 'pending', status: 'streaming',
+  verdict: 'pending', status: 'streaming', chosen: false,
 })
 
 const polled: VendorReport = {
