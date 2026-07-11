@@ -41,7 +41,7 @@ test('names the weakest dimension', () => {
 
 test('renders a delta marker on shortlist entries with a previous verdict', () => {
   render(<Dashboard stats={stats} onOpenVendor={() => {}} />)
-  expect(screen.getByText(/▲1/)).toBeInTheDocument()
+  expect(screen.getByText(/▲ was 8/)).toBeInTheDocument()
 })
 
 test('empty-selection state when nothing selected', () => {
