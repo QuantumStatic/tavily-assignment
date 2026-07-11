@@ -130,6 +130,29 @@ class Store:
         return Vendor(id=cur.lastrowid, project_id=project_id, name=name,
                       vendor_key=None, created_at=ts)
 
+    def rename_vendor(self, vendor_id: int, name: str) -> Vendor | None:
+        """Rename without losing research: sections are cached under the domain key
+        (unchanged by a rename); only the snapshot entry is keyed by the normalized
+        NAME, so move it to the new key — unless another vendor row still uses the
+        old name, in which case it keeps its snapshot. Raises sqlite3.IntegrityError
+        if the new name collides within the project (unique index)."""
+        old = self.get_vendor(vendor_id)
+        if old is None:
+            return None
+        self._exec("UPDATE vendors SET name=? WHERE id=?", (name, vendor_id))
+        old_key, new_key = old.name.strip().lower(), name.strip().lower()
+        has_cache = self._exec(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_cache'").fetchone()
+        if has_cache and old_key != new_key:
+            still_referenced = self._exec(
+                "SELECT 1 FROM vendors WHERE LOWER(TRIM(name))=? LIMIT 1", (old_key,)).fetchone()
+            if not still_referenced:
+                # OR REPLACE: if the new name key somehow already has rows, take theirs over
+                self._exec("UPDATE OR REPLACE report_cache SET vendor_key=? WHERE vendor_key=?",
+                           (new_key, old_key))
+        self._conn.commit()
+        return self.get_vendor(vendor_id)
+
     def list_vendors(self, project_id: int) -> list[Vendor]:
         cur = self._exec(
             "SELECT id, project_id, name, vendor_key, created_at FROM vendors "

@@ -68,6 +68,20 @@ def test_report_read_model_empty_before_generation(tmp_path):
     assert report["generated"] is False and report["sections"] == []
 
 
+def test_rename_vendor_route(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Stel"}).json()["id"]
+    client.post(f"/projects/{pid}/vendors", json={"name": "Fluor"})
+
+    ok = client.patch(f"/vendors/{vid}", json={"name": "  Cives Steel "})
+    assert ok.status_code == 200 and ok.json()["name"] == "Cives Steel"
+
+    assert client.patch(f"/vendors/{vid}", json={"name": "   "}).status_code == 422
+    assert client.patch(f"/vendors/{vid}", json={"name": "fluor"}).status_code == 409   # collision
+    assert client.patch("/vendors/9999", json={"name": "x"}).status_code == 404
+
+
 def test_missing_project_and_vendor_return_404(tmp_path):
     client = _client(tmp_path)
     assert client.get("/projects/9999").status_code == 404

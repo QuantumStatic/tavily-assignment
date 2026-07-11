@@ -17,6 +17,7 @@ type RowsAction =
   | { kind: 'set'; rows: RowState[] }
   | { kind: 'upsert'; row: RowState }
   | { kind: 'remove'; vendorId: number }
+  | { kind: 'rename'; vendorId: number; name: string }
   | { kind: 'event'; vendorId: number; ev: ReportStreamEvent }
   | { kind: 'setReport'; vendorId: number; report: RowState['report']; entity: RowState['entity']
       sectionsPresent?: number; sectionsExpected?: number }
@@ -32,6 +33,9 @@ function rowsReducer(state: RowState[], action: RowsAction): RowState[] {
     }
     case 'remove':
       return state.filter((r) => r.vendorId !== action.vendorId)
+    case 'rename':
+      return state.map((r) =>
+        r.vendorId === action.vendorId ? { ...r, name: action.name } : r)
     case 'event':
       return state.map((r) =>
         r.vendorId === action.vendorId ? reduceEvent(r, action.ev) : r)
@@ -197,6 +201,15 @@ export default function App() {
     }
   }
 
+  async function renameVendor(vendorId: number, name: string) {
+    try {
+      const v = await api.renameVendor(vendorId, name)
+      dispatch({ kind: 'rename', vendorId, name: v.name })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not rename the vendor.')
+    }
+  }
+
   async function selectVendor(vendorId: number) {
     setSelectedVendorId(vendorId)
     const row = rows.find((r) => r.vendorId === vendorId)
@@ -255,7 +268,7 @@ export default function App() {
                 <ThemeToggle theme={theme} onToggle={toggleTheme} />
               </div>
             </div>
-            <VendorTable rows={sortedRows} onSelect={selectVendor} onDelete={removeVendor} />
+            <VendorTable rows={sortedRows} onSelect={selectVendor} onDelete={removeVendor} onRename={renameVendor} />
           </>
         ) : (
           <>

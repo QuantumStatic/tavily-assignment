@@ -37,6 +37,12 @@ function mockApi(opts: MockApiOptions = {}) {
       if (opts.addVendor) return opts.addVendor()
       return { ok: true, json: async () => ({ id: 5, project_id: Number(addVendorMatch[1]), name: 'Cives Steel', vendor_key: null, created_at: 't' }) }
     }
+    const renameVendorMatch = u.match(/\/vendors\/(\d+)$/)
+    if (renameVendorMatch && method === 'PATCH') {
+      const id = Number(renameVendorMatch[1])
+      const body = init?.body ? JSON.parse(String(init.body)) : {}
+      return { ok: true, json: async () => ({ id, project_id: 1, name: body.name, vendor_key: null, created_at: 't', existed: false }) }
+    }
     const reportMatch = u.match(/\/vendors\/(\d+)\/report$/)
     if (reportMatch && method === 'GET') {
       const id = Number(reportMatch[1])
@@ -435,4 +441,28 @@ test('deleting the active project removes it and falls back to another project',
       String(u).endsWith('/projects/1') && init?.method === 'DELETE')).toBe(true))
   await screen.findByRole('heading', { name: 'Tunnel job' })
   expect(screen.queryByText('Bridge job')).toBeNull()
+})
+
+test('renaming a vendor PATCHes the API and updates the row in place', async () => {
+  const doneVendor = {
+    vendor_id: 9, name: 'Cives Stel', vendor_key: 'cives.com', generated: true,
+    sections_present: 6, sections_expected: 6, verdict_score: 7, verdict_reasoning: 'ok',
+    dimensions: [{ dimension: 'legal', score: 8, as_of: 't' }],
+  }
+  const { fetchMock } = mockApi({
+    projectDetails: { 1: { id: 1, name: 'Bridge job', created_at: 't', vendors: [doneVendor] } },
+  })
+  render(<App />)
+  await screen.findByText('Cives Stel')
+
+  await userEvent.click(screen.getByRole('button', { name: /rename vendor/i }))
+  const input = screen.getByRole('textbox', { name: /new vendor name/i })
+  await userEvent.clear(input)
+  await userEvent.type(input, 'Cives Steel{Enter}')
+
+  await waitFor(() => expect(
+    fetchMock.mock.calls.some(([u, init]) =>
+      String(u).endsWith('/vendors/9') && init?.method === 'PATCH')).toBe(true))
+  await screen.findByText('Cives Steel')
+  expect(screen.queryByText('Cives Stel')).toBeNull()
 })
