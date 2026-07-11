@@ -56,7 +56,7 @@ body {
 /* vendor name column is wider and left-aligned; the actions column is narrow;
    verdict + dimension columns evenly share the rest (table-layout: fixed). */
 .vendor-table th:first-child, .vendor-table td:first-child { text-align: left; width: 200px; }
-.vendor-table th:last-child, .vendor-table td:last-child { width: 48px; }
+.vendor-table th:last-child, .vendor-table td:last-child { width: 72px; }
 .vendor-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); position: sticky; top: 0; background: var(--bg); white-space: nowrap; }
 .col-help {
   position: relative;

@@ -466,3 +466,37 @@ test('renaming a vendor PATCHes the API and updates the row in place', async () 
   await screen.findByText('Cives Steel')
   expect(screen.queryByText('Cives Stel')).toBeNull()
 })
+
+const partialVendor = {
+  vendor_id: 9, name: 'Voith', vendor_key: 'voith.com', generated: true,
+  sections_present: 2, sections_expected: 6, verdict_score: 5, verdict_reasoning: 'thin',
+  dimensions: [{ dimension: 'legal', score: 8, as_of: 't' }],
+}
+
+test('a partial report row offers resume, and clicking it re-opens the stream', async () => {
+  mockApi({
+    projectDetails: { 1: { id: 1, name: 'Bridge job', created_at: 't', vendors: [partialVendor] } },
+  })
+  render(<App />)
+  await screen.findByText('Voith')
+
+  await userEvent.click(screen.getByRole('button', { name: /resume research/i }))
+
+  const es = await waitFor(() => {
+    const e = FakeEventSource.last()
+    if (!e) throw new Error('no stream yet')
+    return e
+  })
+  expect(es.url).toContain('/vendors/9/report/stream')
+  expect(document.querySelector('.vendor-row .dot')).not.toBeNull()
+})
+
+test('a fully generated row does not offer resume', async () => {
+  mockApi({
+    projectDetails: { 1: { id: 1, name: 'Bridge job', created_at: 't',
+      vendors: [{ ...partialVendor, sections_present: 6 }] } },
+  })
+  render(<App />)
+  await screen.findByText('Voith')
+  expect(screen.queryByRole('button', { name: /resume research/i })).toBeNull()
+})

@@ -201,6 +201,19 @@ export default function App() {
     }
   }
 
+  function resumeVendor(vendorId: number) {
+    const row = rows.find((r) => r.vendorId === vendorId)
+    if (!row || row.status === 'streaming') return
+    streams.current.get(vendorId)?.()   // drop any stale poller/stream for this row
+    dispatch({ kind: 'upsert', row: startStreaming(row) })
+    const close = openReportStream(
+      vendorId,
+      (ev) => dispatch({ kind: 'event', vendorId, ev }),
+      () => { streams.current.delete(vendorId); pollReport(vendorId) },
+    )
+    streams.current.set(vendorId, close)
+  }
+
   async function renameVendor(vendorId: number, name: string) {
     try {
       const v = await api.renameVendor(vendorId, name)
@@ -268,7 +281,7 @@ export default function App() {
                 <ThemeToggle theme={theme} onToggle={toggleTheme} />
               </div>
             </div>
-            <VendorTable rows={sortedRows} onSelect={selectVendor} onDelete={removeVendor} onRename={renameVendor} />
+            <VendorTable rows={sortedRows} onSelect={selectVendor} onDelete={removeVendor} onRename={renameVendor} onResume={resumeVendor} />
           </>
         ) : (
           <>
