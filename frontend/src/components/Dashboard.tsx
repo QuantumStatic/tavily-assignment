@@ -92,8 +92,7 @@ export function Dashboard({ stats, onOpenVendor }: {
                 <span className="score">{e.verdict}</span>
                 {e.previous_verdict != null && (
                   <span className="delta">
-                    {e.verdict >= e.previous_verdict ? '▲' : '▼'}
-                    {Math.abs(e.verdict - e.previous_verdict)}
+                    {e.verdict >= e.previous_verdict ? '▲' : '▼'} was {e.previous_verdict}
                   </span>
                 )}
               </div>
