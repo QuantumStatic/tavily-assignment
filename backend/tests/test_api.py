@@ -676,3 +676,26 @@ def test_stats_unknown_project_ids_ignored(tmp_path):
 def test_stats_malformed_projects_param_422(tmp_path):
     client = _client(tmp_path)
     assert client.get("/stats?projects=abc").status_code == 422
+
+
+def test_report_carries_trust_counts(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = _generate(client, pid, "Cives Steel")
+    client.patch(f"/vendors/{vid}/chosen", json={"chosen": True})
+    r = client.get(f"/vendors/{vid}/report").json()
+    assert r["chosen_count"] == 1 and r["projects_count"] == 1
+    # deltas present as a dict (no prior day yet -> values may be null)
+    assert "dimension_deltas" in r
+
+
+def test_stream_generation_actually_writes_to_score_history(tmp_path):
+    from vendor_dd.engine.history import ScoreHistory
+
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = _generate(client, pid, "Cives Steel")
+    vendor_key = client.get(f"/vendors/{vid}/report").json()["vendor_key"]
+    history = ScoreHistory(tmp_path / "db.sqlite")
+    scores = history.scores_for(vendor_key)
+    assert "verdict" in scores  # proves stream_report's engine actually recorded to history

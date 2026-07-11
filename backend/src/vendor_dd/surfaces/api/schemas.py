@@ -60,6 +60,11 @@ class ProjectDetail(BaseModel):
     vendors: list[VendorSummary]
 
 
+class DimensionDelta(BaseModel):
+    score: int
+    recorded_on: str
+
+
 class VendorReport(BaseModel):
     generated: bool
     vendor_key: str | None = None
@@ -69,3 +74,6 @@ class VendorReport(BaseModel):
     sections: list[Section]
     sections_present: int = 0
     sections_expected: int = 7  # keep in sync with routes.EXPECTED_SECTIONS; every route sets this explicitly
+    chosen_count: int = 0
+    projects_count: int = 0
+    dimension_deltas: dict[str, DimensionDelta | None] = {}
