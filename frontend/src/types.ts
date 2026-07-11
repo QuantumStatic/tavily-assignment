@@ -37,6 +37,8 @@ export interface EntityCard {
   parent: string | null; is_public: boolean; ticker: string | null; exchange: string | null
 }
 
+export interface DimensionDelta { score: number; recorded_on: string }
+
 export interface VendorReport {
   generated: boolean
   vendor_key: string | null
@@ -46,6 +48,9 @@ export interface VendorReport {
   verdict_score: number | null
   verdict_reasoning: string | null
   sections: Section[]
+  chosen_count?: number
+  projects_count?: number
+  dimension_deltas?: Record<string, DimensionDelta | null>
 }
 
 // The engine Report carried in a report_complete SSE frame.

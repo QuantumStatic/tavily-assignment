@@ -6,11 +6,14 @@ import { rowFromSummary, startStreaming, reduceEvent, rowFromReport } from './ro
 import { DIMENSIONS } from './dimensions'
 import { api } from './api'
 import { openReportStream } from './stream'
+import type { DashboardStats, VendorRef } from './dashboard'
 import { Sidebar } from './components/Sidebar'
 import { AddVendorForm } from './components/AddVendorForm'
 import { VendorTable } from './components/VendorTable'
 import { ReportPanel } from './components/ReportPanel'
 import { ThemeToggle } from './components/ThemeToggle'
+import { ProjectFilter } from './components/ProjectFilter'
+import { Dashboard } from './components/Dashboard'
 import { useTheme } from './theme'
 
 type RowsAction =
@@ -20,7 +23,8 @@ type RowsAction =
   | { kind: 'rename'; vendorId: number; name: string }
   | { kind: 'event'; vendorId: number; ev: ReportStreamEvent }
   | { kind: 'setReport'; vendorId: number; report: RowState['report']; entity: RowState['entity']
-      sectionsPresent?: number; sectionsExpected?: number }
+      sectionsPresent?: number; sectionsExpected?: number
+      chosenCount?: number; projectsCount?: number; deltas?: RowState['deltas'] }
   | { kind: 'fromReport'; vendorId: number; report: VendorReport }
 
 function rowsReducer(state: RowState[], action: RowsAction): RowState[] {
@@ -43,7 +47,10 @@ function rowsReducer(state: RowState[], action: RowsAction): RowState[] {
       return state.map((r) => r.vendorId === action.vendorId
         ? { ...r, report: action.report, entity: action.entity ?? r.entity,
             sectionsPresent: action.sectionsPresent ?? r.sectionsPresent,
-            sectionsExpected: action.sectionsExpected ?? r.sectionsExpected } : r)
+            sectionsExpected: action.sectionsExpected ?? r.sectionsExpected,
+            chosenCount: action.chosenCount ?? r.chosenCount,
+            projectsCount: action.projectsCount ?? r.projectsCount,
+            deltas: action.deltas ?? r.deltas } : r)
     case 'fromReport':
       return state.map((r) =>
         r.vendorId === action.vendorId ? rowFromReport(r, action.report) : r)
@@ -60,27 +67,45 @@ export default function App() {
   const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [theme, toggleTheme] = useTheme()
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<number>>(new Set())
   const streams = useRef<Map<number, () => void>>(new Map())
   const activeIdRef = useRef(activeId)
+  // set by openVendorFromDashboard just before switching projects, so the load-rows
+  // effect below can open the right vendor's report instead of clearing the selection.
+  const pendingVendorRef = useRef<number | null>(null)
 
   // keep activeIdRef in sync with activeId
   useEffect(() => { activeIdRef.current = activeId }, [activeId])
 
-  // load projects once
+  // load projects once — land on the Overview (activeId stays null) rather than
+  // auto-selecting the first project.
   useEffect(() => {
     api.listProjects()
       .then((ps) => {
         setProjects(ps)
-        setActiveId((cur) => (cur == null && ps.length ? ps[0].id : cur))
+        setSelectedProjectIds(new Set(ps.map((p) => p.id)))
       })
       .catch(() => setError('Could not reach the API. Is the backend running?'))
   }, [])
+
+  // fetch overview stats whenever we're on the Overview or the project selection changes
+  useEffect(() => {
+    if (activeId !== null) return
+    let cancelled = false
+    api.getStats([...selectedProjectIds])
+      .then((s) => { if (!cancelled) setStats(s) })
+      .catch(() => { if (!cancelled) setError('Could not load the overview.') })
+    return () => { cancelled = true }
+  }, [activeId, selectedProjectIds])
 
   // load the active project's vendor rows
   useEffect(() => {
     if (activeId == null) return
     let cancelled = false
-    setSelectedVendorId(null)
+    const pending = pendingVendorRef.current
+    pendingVendorRef.current = null
+    setSelectedVendorId(pending)
     api.getProject(activeId)
       .then((detail) => {
         if (cancelled) return
@@ -139,7 +164,7 @@ export default function App() {
       const row = startStreaming(rowFromSummary({
         vendor_id: v.id, name: v.name, vendor_key: v.vendor_key,
         generated: false, sections_present: 0, sections_expected: DIMENSIONS.length,
-        verdict_score: null, verdict_reasoning: null, dimensions: [],
+        verdict_score: null, verdict_reasoning: null, dimensions: [], chosen: v.chosen,
       }))
       dispatch({ kind: 'upsert', row })
       const close = openReportStream(
@@ -240,9 +265,31 @@ export default function App() {
       dispatch({
         kind: 'setReport', vendorId, report, entity: fetched.entity ?? undefined,
         sectionsPresent: fetched.sections_present, sectionsExpected: fetched.sections_expected,
+        chosenCount: fetched.chosen_count, projectsCount: fetched.projects_count,
+        deltas: fetched.dimension_deltas,
       })
     } catch {
       setError('Could not load the report.')
+    }
+  }
+
+  async function setChosen(vendorId: number, chosen: boolean) {
+    const row = rows.find((r) => r.vendorId === vendorId)
+    if (!row) return
+    dispatch({ kind: 'upsert', row: { ...row, chosen } })
+    try {
+      await api.setChosen(vendorId, chosen)
+    } catch {
+      setError('Could not update chosen.')
+    }
+  }
+
+  function openVendorFromDashboard(ref: VendorRef) {
+    if (ref.project_id === activeId) {
+      setSelectedVendorId(ref.vendor_id)
+    } else {
+      pendingVendorRef.current = ref.vendor_id
+      setActiveId(ref.project_id)
     }
   }
 
@@ -258,6 +305,7 @@ export default function App() {
         onSelect={setActiveId}
         onCreate={createProject}
         onDelete={removeProject}
+        onOverview={() => setActiveId(null)}
       />
       <main className="main">
         {error && (
@@ -281,15 +329,22 @@ export default function App() {
                 <ThemeToggle theme={theme} onToggle={toggleTheme} />
               </div>
             </div>
-            <VendorTable rows={sortedRows} onSelect={selectVendor} onDelete={removeVendor} onRename={renameVendor} onResume={resumeVendor} />
+            <VendorTable rows={sortedRows} onSelect={selectVendor} onDelete={removeVendor} onRename={renameVendor} onResume={resumeVendor} onChosen={setChosen} />
           </>
         ) : (
           <>
             <div className="toolbar">
-              <span />
+              <h3>Overview</h3>
               <ThemeToggle theme={theme} onToggle={toggleTheme} />
             </div>
-            <p className="empty">Select a project, or create one to begin.</p>
+            <ProjectFilter
+              projects={projects.map((p) => ({ id: p.id, name: p.name, vendorCount: 0 }))}
+              selectedIds={selectedProjectIds}
+              onChange={setSelectedProjectIds}
+            />
+            {stats
+              ? <Dashboard stats={stats} onOpenVendor={openVendorFromDashboard} />
+              : <p className="muted">Loading overview…</p>}
           </>
         )}
       </main>

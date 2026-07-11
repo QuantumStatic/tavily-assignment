@@ -17,6 +17,9 @@ export interface RowState {
   sectionsExpected?: number
   duplicateOf?: string | null
   chosen: boolean
+  chosenCount?: number
+  projectsCount?: number
+  deltas?: Record<string, { score: number; recorded_on: string } | null>
 }
 
 const cellsWith = (value: CellState): Record<string, CellState> =>
@@ -95,5 +98,8 @@ export function rowFromReport(row: RowState, r: VendorReport): RowState {
     } : undefined,
     sectionsPresent: r.sections_present,
     sectionsExpected: r.sections_expected,
+    chosenCount: r.chosen_count ?? row.chosenCount,
+    projectsCount: r.projects_count ?? row.projectsCount,
+    deltas: r.dimension_deltas ?? row.deltas,
   }
 }
