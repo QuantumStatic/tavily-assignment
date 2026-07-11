@@ -223,3 +223,24 @@ def test_evict_unreferenced_keeps_cache_while_a_vendor_still_references_it(tmp_p
     _seed_cache(tmp_path, "cives.com")
     store.evict_unreferenced("Cives Steel", "cives.com")   # still referenced -> no-op
     assert _cached_sections(tmp_path, "cives.com") != {}
+
+
+def test_remove_project_cascades_vendors_and_evicts_unreferenced_cache(tmp_path):
+    store = _store(tmp_path)
+    p = store.create_project("p")
+    v = store.add_vendor(p.id, "Cives Steel")
+    store.set_vendor_key(v.id, "cives.com")
+    _seed_cache(tmp_path, "cives.com")
+
+    # a vendor in ANOTHER project shares the cache key — its report must survive
+    p2 = store.create_project("p2")
+    v2 = store.add_vendor(p2.id, "Cives Steel")
+    store.set_vendor_key(v2.id, "cives.com")
+
+    store.remove_project(p.id)
+    assert store.get_project(p.id) is None
+    assert store.list_vendors(p.id) == []
+    assert _cached_sections(tmp_path, "cives.com") != {}   # still referenced by p2
+
+    store.remove_project(p2.id)
+    assert _cached_sections(tmp_path, "cives.com") == {}   # last reference gone -> evicted

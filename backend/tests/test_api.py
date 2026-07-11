@@ -430,3 +430,14 @@ def test_blank_names_are_rejected_and_stored_names_are_trimmed(tmp_path):
     assert client.post(f"/projects/{pid}/vendors", json={"name": " \t "}).status_code == 422
     v = client.post(f"/projects/{pid}/vendors", json={"name": "  Cives Steel  "}).json()
     assert v["name"] == "Cives Steel"
+
+
+def test_delete_project_removes_it_and_its_vendors(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    assert client.delete(f"/projects/{pid}").status_code == 200
+    assert client.get(f"/projects/{pid}").status_code == 404
+    assert client.get(f"/vendors/{vid}/report").status_code == 404
+    assert client.delete("/projects/9999").status_code == 404

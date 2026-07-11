@@ -89,6 +89,15 @@ def get_project(project_id: int, request: Request):
                          vendors=vendors)
 
 
+@router.delete("/projects/{project_id}")
+def delete_project(project_id: int, request: Request):
+    store = _store(request)
+    if store.get_project(project_id) is None:
+        raise HTTPException(status_code=404, detail="project not found")
+    store.remove_project(project_id)
+    return {"ok": True}
+
+
 def _vendor_out(v: Vendor, *, existed: bool) -> VendorOut:
     return VendorOut(id=v.id, project_id=v.project_id, name=v.name,
                      vendor_key=v.vendor_key, created_at=v.created_at, existed=existed)
