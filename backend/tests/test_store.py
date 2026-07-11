@@ -268,3 +268,22 @@ def test_rename_vendor_does_not_clobber_preexisting_cache_data_at_the_new_key(tm
     assert content["reasoning"] == "original target data"
 
     assert _cached_sections(tmp_path, "cives stel") == {}          # old key cleared out
+
+
+def test_rename_vendor_keeps_the_snapshot_for_another_vendor_still_using_the_old_name(tmp_path):
+    # report_cache is shared by NAME across projects, so two vendors in different
+    # projects can share one snapshot key. Renaming ONE of them must not migrate (and
+    # thus steal/orphan) the shared snapshot the OTHER vendor still relies on.
+    store = _store(tmp_path)
+    p1 = store.create_project("p1")
+    p2 = store.create_project("p2")
+    a = store.add_vendor(p1.id, "Cives Steel")
+    store.add_vendor(p2.id, "Cives Steel")             # same name, different project
+    _seed_cache(tmp_path, "cives steel")               # the shared snapshot, keyed by name
+
+    store.rename_vendor(a.id, "Cives Steel Co")
+
+    # the other vendor still uses "Cives Steel", so its snapshot must stay put ...
+    assert _cached_sections(tmp_path, "cives steel") != {}
+    # ... and must NOT have been migrated onto the renamed vendor's new name key
+    assert _cached_sections(tmp_path, "cives steel co") == {}
