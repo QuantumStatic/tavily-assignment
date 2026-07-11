@@ -34,14 +34,20 @@ def _cache(request: Request) -> SQLiteCache:
 
 
 def _report_sections(cache: SQLiteCache, vendor_key: str):
-    """Parsed sections for a vendor (excludes the SNAPSHOT entity slot), keyed by dimension."""
+    """Sections keyed by dimension (excluding the SNAPSHOT entity slot), PLUS the raw
+    entity-snapshot content — both read TTL-free from one all_sections call. Reading the
+    snapshot here (rather than a separate TTL-applied cache.get) keeps the report header
+    consistent with the also-TTL-free sections: an old-but-displayed report shows its
+    company card instead of blanking it out at the 30-day snapshot TTL."""
     stored = cache.all_sections(vendor_key)
-    return {d: (Section.model_validate(c), ts)
-            for d, (c, ts) in stored.items() if d is not Dimension.SNAPSHOT}
+    sections = {d: (Section.model_validate(c), ts)
+                for d, (c, ts) in stored.items() if d is not Dimension.SNAPSHOT}
+    snap = stored.get(Dimension.SNAPSHOT)
+    return sections, (snap[0] if snap else None)
 
 
 def _summarize(vendor: Vendor, cache: SQLiteCache) -> VendorSummary:
-    parsed = _report_sections(cache, vendor.vendor_key) if vendor.vendor_key else {}
+    parsed, _ = _report_sections(cache, vendor.vendor_key) if vendor.vendor_key else ({}, None)
     if not parsed:
         return VendorSummary(vendor_id=vendor.id, name=vendor.name, vendor_key=vendor.vendor_key,
                              generated=False, verdict_score=None, verdict_reasoning=None,
@@ -169,16 +175,15 @@ def get_report(vendor_id: int, request: Request):
         raise HTTPException(status_code=404, detail="vendor not found")
     cache = _cache(request)
     try:
-        parsed = _report_sections(cache, vendor.vendor_key) if vendor.vendor_key else {}
+        parsed, entity_raw = _report_sections(cache, vendor.vendor_key) if vendor.vendor_key else ({}, None)
         if not parsed:
             return VendorReport(generated=False, vendor_key=vendor.vendor_key, entity=None,
                                 verdict_score=None, verdict_reasoning=None, sections=[],
                                 sections_present=0, sections_expected=EXPECTED_SECTIONS)
         sections = [sec for sec, _ in parsed.values()]
         score, reasoning = assemble_verdict(sections)
-        # snapshot is keyed by domain (vendor_key), stable across renames; we only reach
-        # here when sections exist, which requires vendor_key to be set.
-        entity_raw = cache.get(vendor.vendor_key, Dimension.SNAPSHOT)
+        # entity snapshot is keyed by domain (stable across renames) and read TTL-free,
+        # consistent with the sections shown alongside it.
         entity = EntityCard.model_validate(entity_raw) if entity_raw else None
     finally:
         cache.close()
