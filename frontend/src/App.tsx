@@ -222,6 +222,8 @@ export default function App() {
   }
 
   async function removeVendor(vendorId: number) {
+    const row = rows.find((r) => r.vendorId === vendorId)
+    if (!window.confirm(`Delete vendor "${row?.name ?? vendorId}"?`)) return
     try {
       await api.deleteVendor(vendorId)
       streams.current.get(vendorId)?.()

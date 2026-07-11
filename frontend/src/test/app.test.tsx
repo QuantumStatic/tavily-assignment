@@ -381,7 +381,26 @@ test('adding an already-present vendor reuses the row and opens its report, no n
   expect(FakeEventSource.last()).toBeUndefined()
 })
 
+test('deleting a vendor asks for confirmation; declining leaves it in place', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(false)
+  const { fetchMock } = mockApi()
+  render(<App />)
+
+  await openProject('Bridge job')
+  await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
+  await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
+  await screen.findByText('Cives Steel')
+
+  await userEvent.click(screen.getByRole('button', { name: /delete vendor/i }))
+
+  expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Cives Steel'))
+  expect(screen.getByText('Cives Steel')).toBeInTheDocument()
+  expect(fetchMock.mock.calls.some(([u, init]) =>
+    String(u).match(/\/vendors\/\d+$/) && init?.method === 'DELETE')).toBe(false)
+})
+
 test('a successful vendor deletion closes its stream and removes the row', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
   mockApi()
   render(<App />)
 
@@ -404,6 +423,7 @@ test('a successful vendor deletion closes its stream and removes the row', async
 })
 
 test('a failed vendor deletion surfaces an error and keeps the row', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
   mockApi({
     deleteVendor: () => ({ ok: false, status: 500, json: async () => ({}) }),
   })
@@ -434,6 +454,7 @@ test('a failed vendor deletion surfaces an error and keeps the row', async () =>
 })
 
 test('deleting a vendor that is already gone (404) still removes the row, no error', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
   mockApi({
     deleteVendor: () => ({ ok: false, status: 404, json: async () => ({ detail: 'vendor not found' }) }),
   })
