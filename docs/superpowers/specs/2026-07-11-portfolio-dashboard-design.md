@@ -226,6 +226,36 @@ by domain), and per-dimension `previous: {score: int, recorded_on: str} | None` 
   empty-selection state), chosen toggle optimistic update, sidebar Overview entry
   navigation, `filterByName` shared-helper tests, existing sidebar tests stay green.
 
+## Execution strategy: two parallel lanes
+
+The work splits into two lanes with **zero file overlap** (backend/ vs frontend/), so
+they run as two concurrent implementer subagents in separate worktrees, merged at the
+end. The spec's API contract (`DashboardStats`, the chosen PATCH, the report
+extensions) is the interface both lanes build against — the frontend develops and
+tests against typed mocks of that contract, exactly as the existing frontend tests
+mock `api`.
+
+**Backend lane** (sequential within — shared `routes.py`/`store.py`):
+1. `score_history` module: table + CHECK-generated-from-enum + `record_score`
+2. Pipeline write hooks (fresh sections + verdict; cached sections don't re-record)
+3. `chosen` column + `PATCH /vendors/{id}/chosen`
+4. Pure `compute_dashboard` function
+5. `GET /stats` route
+6. Report-endpoint extensions (trust counts + per-dimension deltas)
+
+**Frontend lane** (sequential within — several tasks touch `App.tsx`):
+1. `filterByName` extraction + Sidebar refactor (existing tests stay green)
+2. `ProjectFilter` dropdown
+3. `Dashboard.tsx` + charts (against mocked `/stats`)
+4. Chosen toggle in the vendor table
+5. App wiring (Overview landing view, sidebar entry) + ReportPanel trust/deltas
+
+**Integration task** (after both lanes merge): run full suites against the real
+endpoint, live browser verification, fix any contract drift.
+
+Splitting finer than two lanes buys nothing: backend sub-tasks contend on
+`routes.py`, frontend sub-tasks on `App.tsx`, and merge cost eats the gain.
+
 ## Out of scope (explicitly)
 
 - Sparklines / "biggest movers" panels (the history table enables them later).
