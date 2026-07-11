@@ -1,5 +1,5 @@
+import { useState } from 'react'
 import type { Project } from '../types'
-import { NewProjectForm } from './NewProjectForm'
 
 export function Sidebar({
   projects, activeId, onSelect, onCreate, onDelete,
@@ -10,14 +10,40 @@ export function Sidebar({
   onCreate: (name: string) => void
   onDelete: (id: number) => void
 }) {
+  const [query, setQuery] = useState('')
+  const q = query.trim()
+  const ql = q.toLowerCase()
+  const filtered = q ? projects.filter((p) => p.name.toLowerCase().includes(ql)) : projects
+  // offer to create only when the query matches no existing project at all
+  const showCreate = q !== '' && filtered.length === 0
+
+  const create = () => {
+    if (!showCreate) return
+    onCreate(q)
+    setQuery('')
+  }
+
   return (
     <aside className="sidebar">
       <h4>Projects</h4>
-      {projects.length === 0 ? (
-        <p className="empty">Create a project to begin.</p>
-      ) : (
+      <input
+        className="project-search"
+        type="search"
+        aria-label="Search or create a project"
+        placeholder="Search projects…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter') return
+          e.preventDefault()
+          if (filtered.length === 1) onSelect(filtered[0].id)   // jump to the sole match
+          else if (showCreate) create()                          // no matches -> create it
+        }}
+      />
+
+      {filtered.length > 0 && (
         <ul className="project-list">
-          {projects.map((p) => (
+          {filtered.map((p) => (
             <li
               key={p.id}
               className={p.id === activeId ? 'active' : ''}
@@ -50,7 +76,16 @@ export function Sidebar({
           ))}
         </ul>
       )}
-      <NewProjectForm onCreate={onCreate} />
+
+      {showCreate && (
+        <button className="project-create" onClick={create}>
+          + Create “{q}”
+        </button>
+      )}
+
+      {projects.length === 0 && q === '' && (
+        <p className="empty">Create a project to begin.</p>
+      )}
     </aside>
   )
 }
