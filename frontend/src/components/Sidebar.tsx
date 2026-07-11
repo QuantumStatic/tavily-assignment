@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Project } from '../types'
+import { filterByName } from '../filter'
 
 export function Sidebar({
   projects, activeId, onSelect, onCreate, onDelete,
@@ -12,8 +13,7 @@ export function Sidebar({
 }) {
   const [query, setQuery] = useState('')
   const q = query.trim()
-  const ql = q.toLowerCase()
-  const filtered = q ? projects.filter((p) => p.name.toLowerCase().includes(ql)) : projects
+  const filtered = filterByName(projects, q)
   // offer to create only when the query matches no existing project at all
   const showCreate = q !== '' && filtered.length === 0
 
