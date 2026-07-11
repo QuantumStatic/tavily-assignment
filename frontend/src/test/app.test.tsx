@@ -500,3 +500,16 @@ test('a fully generated row does not offer resume', async () => {
   await screen.findByText('Voith')
   expect(screen.queryByRole('button', { name: /resume research/i })).toBeNull()
 })
+
+test('a domain-level duplicate row shows a badge naming the canonical vendor', async () => {
+  mockApi({
+    projectDetails: { 1: { id: 1, name: 'Bridge job', created_at: 't', vendors: [
+      { ...partialVendor, sections_present: 6, duplicate_of: null },
+      { ...partialVendor, vendor_id: 10, name: 'Voith Hydro', sections_present: 6, duplicate_of: 'Voith' },
+    ] } },
+  })
+  render(<App />)
+  await screen.findByText('Voith Hydro')
+  const badge = screen.getByTitle(/same company as Voith/i)
+  expect(badge).toBeInTheDocument()
+})

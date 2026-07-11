@@ -44,6 +44,7 @@ class VendorSummary(BaseModel):
     dimensions: list[DimensionScore]
     sections_present: int = 0
     sections_expected: int = 7  # keep in sync with routes.EXPECTED_SECTIONS; every route sets this explicitly
+    duplicate_of: str | None = None   # earlier same-project vendor resolving to the same domain
 
 
 class ProjectDetail(BaseModel):

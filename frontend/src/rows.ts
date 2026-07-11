@@ -15,6 +15,7 @@ export interface RowState {
   report?: Report
   sectionsPresent?: number
   sectionsExpected?: number
+  duplicateOf?: string | null
 }
 
 const cellsWith = (value: CellState): Record<string, CellState> =>
@@ -33,6 +34,7 @@ export function rowFromSummary(v: VendorSummary): RowState {
     vendorId: v.vendor_id, name: v.name, vendorKey: v.vendor_key,
     cells: cellsWith('idle'), verdict: 'idle', status: 'idle',
     sectionsPresent: v.sections_present, sectionsExpected: v.sections_expected,
+    duplicateOf: v.duplicate_of ?? null,
   }
   if (!v.generated) return base
   const cells = cellsWith('failed')

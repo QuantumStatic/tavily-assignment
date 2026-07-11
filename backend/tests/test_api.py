@@ -455,3 +455,17 @@ def test_delete_project_removes_it_and_its_vendors(tmp_path):
     assert client.get(f"/projects/{pid}").status_code == 404
     assert client.get(f"/vendors/{vid}/report").status_code == 404
     assert client.delete("/projects/9999").status_code == 404
+
+
+def test_project_detail_flags_domain_level_duplicates(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    v1 = client.post(f"/projects/{pid}/vendors", json={"name": "Voith"}).json()["id"]
+    v2 = client.post(f"/projects/{pid}/vendors", json={"name": "Voith Hydro"}).json()["id"]
+    store = client.app.state.store
+    store.set_vendor_key(v1, "voith.com")
+    store.set_vendor_key(v2, "voith.com")
+
+    vendors = client.get(f"/projects/{pid}").json()["vendors"]
+    assert vendors[0]["duplicate_of"] is None
+    assert vendors[1]["duplicate_of"] == "Voith"   # points at the earlier (canonical) row
