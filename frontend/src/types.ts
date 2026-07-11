@@ -12,6 +12,7 @@ export interface VendorSummary {
   verdict_score: number | null
   verdict_reasoning: string | null
   dimensions: DimensionScore[]
+  duplicate_of?: string | null
 }
 
 export interface ProjectDetail {

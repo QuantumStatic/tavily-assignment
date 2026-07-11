@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
-import { rowFromSummary, startStreaming, reduceEvent } from '../rows'
-import type { VendorSummary } from '../types'
+import { rowFromSummary, startStreaming, reduceEvent, rowFromReport } from '../rows'
+import type { RowState } from '../rows'
+import type { VendorSummary, VendorReport } from '../types'
 
 const summary = (over: Partial<VendorSummary> = {}): VendorSummary => ({
   vendor_id: 1, name: 'Cives', vendor_key: 'cives.com', generated: false,
@@ -92,4 +93,38 @@ test('report_error only flips still-pending cells to failed, leaving scored/fail
   expect(r.cells.legal).toEqual({ score: 8 })      // untouched: real score preserved
   expect(r.cells.financial).toBe('failed')          // untouched: already failed
   expect(r.cells.safety).toBe('failed')             // flipped: was pending
+})
+
+const streamingRow = (): RowState => ({
+  vendorId: 5, name: 'Cives Steel', vendorKey: null,
+  cells: { legal: 'pending', financial: 'pending', safety: 'pending',
+           certifications: 'pending', backlog: 'pending', news: 'pending' },
+  verdict: 'pending', status: 'streaming',
+})
+
+const polled: VendorReport = {
+  generated: true, vendor_key: 'cives.com',
+  entity: { name: 'Cives Steel', domain: 'cives.com', country: null, industry: null,
+            parent: null, is_public: false, ticker: null, exchange: null },
+  verdict_score: 7, verdict_reasoning: 'Solid.',
+  sections: [{ dimension: 'legal', findings: [], reasoning: 'clean', score: 8 }],
+  sections_present: 1, sections_expected: 6,
+}
+
+test('rowFromReport finishes a streaming row from the polled read model', () => {
+  const row = rowFromReport(streamingRow(), polled)
+  expect(row.status).toBe('done')
+  expect(row.cells.legal).toEqual({ score: 8 })
+  expect(row.cells.financial).toBe('failed')          // absent section -> failed, not pending
+  expect(row.verdict).toEqual({ score: 7 })
+  expect(row.report?.verdict_reasoning).toBe('Solid.')
+  expect(row.sectionsPresent).toBe(1)
+})
+
+test('rowFromReport with no verdict leaves the report panel data unset but ends the row', () => {
+  const partial: VendorReport = { ...polled, verdict_score: null, verdict_reasoning: null }
+  const row = rowFromReport(streamingRow(), partial)
+  expect(row.status).toBe('done')
+  expect(row.verdict).toBe('failed')
+  expect(row.report).toBeUndefined()
 })
