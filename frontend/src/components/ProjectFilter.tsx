@@ -37,13 +37,10 @@ export function ProjectFilter({
             value={query} onChange={(e) => setQuery(e.target.value)}
           />
           <div className="filter-actions">
-            {sel === total ? (
-              <button className="link" onClick={() => onChange(new Set())}>Deselect all</button>
-            ) : (
-              <button className="link" onClick={() => onChange(new Set(projects.map((p) => p.id)))}>
-                Select all
-              </button>
-            )}
+            <button className="link" onClick={() => onChange(new Set(projects.map((p) => p.id)))}>
+              Select all
+            </button>
+            <button className="link" onClick={() => onChange(new Set())}>Deselect all</button>
           </div>
           <div className="filter-options">
             {visible.map((p) => {
