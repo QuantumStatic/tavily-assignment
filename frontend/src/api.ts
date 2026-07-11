@@ -42,4 +42,9 @@ export const api = {
       return ensureOk(r).then(() => undefined)
     }),
   getReport: (id: number) => fetch(`${BASE}/vendors/${id}/report`).then(json<VendorReport>),
+  deleteProject: (id: number) =>
+    fetch(`${BASE}/projects/${id}`, { method: 'DELETE' }).then((r) => {
+      if (r.status === 404) return undefined   // already gone -> desired outcome
+      return ensureOk(r).then(() => undefined)
+    }),
 }

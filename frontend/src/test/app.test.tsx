@@ -264,7 +264,7 @@ test('switching the active project closes the previous project\'s open streams',
   })
   expect(es.closed).toBe(false)
 
-  await userEvent.click(screen.getByRole('button', { name: /Tunnel job/ }))
+  await userEvent.click(screen.getByText('Tunnel job'))
   await waitFor(() => expect(es.closed).toBe(true))
 })
 
@@ -402,7 +402,7 @@ test('a vendor add that resolves after switching projects does not appear in the
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
 
   // switch to project 2 before the POST resolves
-  await userEvent.click(screen.getByRole('button', { name: /Tunnel job/ }))
+  await userEvent.click(screen.getByText('Tunnel job'))
   await screen.findByRole('heading', { name: 'Tunnel job' })
 
   // resolve the pending POST
@@ -411,4 +411,28 @@ test('a vendor add that resolves after switching projects does not appear in the
   // assert project 2's table does NOT show the vendor that was added to project 1
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Tunnel job' })).toBeInTheDocument())
   expect(screen.queryByText('Cives Steel')).not.toBeInTheDocument()
+})
+
+test('deleting the active project removes it and falls back to another project', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  const { fetchMock } = mockApi({
+    projects: [
+      { id: 1, name: 'Bridge job', created_at: 't' },
+      { id: 2, name: 'Tunnel job', created_at: 't' },
+    ],
+    projectDetails: {
+      1: { id: 1, name: 'Bridge job', created_at: 't', vendors: [] },
+      2: { id: 2, name: 'Tunnel job', created_at: 't', vendors: [] },
+    },
+  })
+  render(<App />)
+  await screen.findByRole('heading', { name: 'Bridge job' })
+
+  await userEvent.click(screen.getByRole('button', { name: /delete project bridge job/i }))
+
+  await waitFor(() => expect(
+    fetchMock.mock.calls.some(([u, init]) =>
+      String(u).endsWith('/projects/1') && init?.method === 'DELETE')).toBe(true))
+  await screen.findByRole('heading', { name: 'Tunnel job' })
+  expect(screen.queryByText('Bridge job')).toBeNull()
 })

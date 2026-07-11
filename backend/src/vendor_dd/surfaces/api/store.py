@@ -105,6 +105,14 @@ class Store:
         row = cur.fetchone()
         return Project(*row) if row else None
 
+    def remove_project(self, project_id: int) -> None:
+        # Cascade through remove_vendor so every vendor gets the same refcounted
+        # cache eviction a single delete gets.
+        for v in self.list_vendors(project_id):
+            self.remove_vendor(v.id)
+        self._exec("DELETE FROM projects WHERE id=?", (project_id,))
+        self._conn.commit()
+
     def find_vendor(self, project_id: int, name: str) -> Vendor | None:
         """A vendor in this project with the same name (case/space-insensitive), if any."""
         cur = self._exec(

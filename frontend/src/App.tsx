@@ -105,6 +105,22 @@ export default function App() {
     }
   }
 
+  async function removeProject(projectId: number) {
+    const p = projects.find((x) => x.id === projectId)
+    if (!window.confirm(`Delete project "${p?.name ?? projectId}" and all its vendors?`)) return
+    try {
+      await api.deleteProject(projectId)
+      const rest = projects.filter((x) => x.id !== projectId)
+      setProjects(rest)
+      if (activeId === projectId) {
+        setActiveId(rest.length ? rest[0].id : null)
+        if (!rest.length) dispatch({ kind: 'set', rows: [] })
+      }
+    } catch {
+      setError('Could not delete the project.')
+    }
+  }
+
   async function addVendor(name: string) {
     if (activeId == null) return
     const forProject = activeId
@@ -215,6 +231,7 @@ export default function App() {
         activeId={activeId}
         onSelect={setActiveId}
         onCreate={createProject}
+        onDelete={removeProject}
       />
       <main className="main">
         {error && (
