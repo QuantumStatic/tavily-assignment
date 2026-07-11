@@ -34,6 +34,10 @@ export const api = {
     fetch(`${BASE}/projects/${projectId}/vendors`, {
       method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ name }),
     }).then(json<VendorOut>),
+  renameVendor: (id: number, name: string) =>
+    fetch(`${BASE}/vendors/${id}`, {
+      method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ name }),
+    }).then(json<VendorOut>),
   deleteVendor: (id: number) =>
     fetch(`${BASE}/vendors/${id}`, { method: 'DELETE' }).then((r) => {
       // 404 means it's already gone server-side — that's the outcome we wanted, so
@@ -42,4 +46,9 @@ export const api = {
       return ensureOk(r).then(() => undefined)
     }),
   getReport: (id: number) => fetch(`${BASE}/vendors/${id}/report`).then(json<VendorReport>),
+  deleteProject: (id: number) =>
+    fetch(`${BASE}/projects/${id}`, { method: 'DELETE' }).then((r) => {
+      if (r.status === 404) return undefined   // already gone -> desired outcome
+      return ensureOk(r).then(() => undefined)
+    }),
 }

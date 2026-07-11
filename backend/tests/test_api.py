@@ -68,6 +68,20 @@ def test_report_read_model_empty_before_generation(tmp_path):
     assert report["generated"] is False and report["sections"] == []
 
 
+def test_rename_vendor_route(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Stel"}).json()["id"]
+    client.post(f"/projects/{pid}/vendors", json={"name": "Fluor"})
+
+    ok = client.patch(f"/vendors/{vid}", json={"name": "  Cives Steel "})
+    assert ok.status_code == 200 and ok.json()["name"] == "Cives Steel"
+
+    assert client.patch(f"/vendors/{vid}", json={"name": "   "}).status_code == 422
+    assert client.patch(f"/vendors/{vid}", json={"name": "fluor"}).status_code == 409   # collision
+    assert client.patch("/vendors/9999", json={"name": "x"}).status_code == 404
+
+
 def test_missing_project_and_vendor_return_404(tmp_path):
     client = _client(tmp_path)
     assert client.get("/projects/9999").status_code == 404
@@ -262,3 +276,196 @@ def test_read_model_reports_section_completeness(tmp_path):
     assert summ["sections_present"] == 2 and summ["sections_expected"] == 6
     report = client.get(f"/vendors/{vid}/report").json()
     assert report["sections_present"] == 2 and report["sections_expected"] == 6
+
+
+def test_add_vendor_lost_race_falls_back_to_the_existing_row(tmp_path, monkeypatch):
+    """If the pre-insert duplicate check misses (concurrent add), the DB constraint
+    rejects the insert and the route returns the winner's row instead of a 500."""
+    from vendor_dd.surfaces.api.store import Store
+
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    first = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()
+
+    real = Store.find_vendor
+    calls = {"n": 0}
+
+    def racy(self, project_id, name):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None   # simulate the check running before the concurrent insert landed
+        return real(self, project_id, name)
+
+    monkeypatch.setattr(Store, "find_vendor", racy)
+    dup = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"})
+    assert dup.status_code == 200
+    assert dup.json()["existed"] is True
+    assert dup.json()["id"] == first["id"]
+
+
+import threading
+
+
+class GatedLLM:
+    """Entity resolution is instant; section synthesis blocks on a gate the test
+    controls, so generation stays in flight for as long as the test needs."""
+
+    def __init__(self):
+        self.gate = threading.Event()
+        self.entity_calls = 0
+        self.section_calls = 0
+
+    def structured(self, prompt, schema):
+        if schema is EntityCard:
+            self.entity_calls += 1
+            return EntityCard(name="Cives Steel", domain="cives.com", country="united states",
+                              industry="steel", is_public=False)
+        self.section_calls += 1
+        assert self.gate.wait(timeout=10), "test never opened the gate"
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="x", score=5)
+
+
+def test_second_stream_for_the_same_vendor_tails_the_existing_run(tmp_path):
+    """Two concurrent streams must NOT start two generations (double Tavily/LLM
+    spend, racing cache writes). The second subscriber replays history and tails.
+
+    NOTE: this FastAPI TestClient/httpx version buffers the entire SSE body before
+    iter_lines()/iter_text() yields anything, so a nested `with client.stream(...)`
+    never actually observes the first stream mid-flight — it just serializes the
+    two requests. We fall back to running each stream on its own thread and use
+    vendor_key (backfilled synchronously the moment EntityResolved fires, well
+    before section synthesis is even submitted) as the "generation is now blocked
+    on the gate" signal instead of a partial read of the SSE body."""
+    import time
+
+    llm = GatedLLM()
+    deps = Deps(search=FakeSearch(), llm=llm, cache_path=tmp_path / "db.sqlite",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    app = create_app(deps)
+    client = TestClient(app)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    result1: dict = {}
+    result2: dict = {}
+
+    def run_first():
+        with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+            result1["body"] = "".join(resp.iter_text())
+
+    t1 = threading.Thread(target=run_first)
+    t1.start()
+
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and app.state.store.get_vendor(vid).vendor_key is None:
+        time.sleep(0.02)
+    assert app.state.store.get_vendor(vid).vendor_key is not None, "entity never resolved"
+
+    def run_second():
+        with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+            result2["body"] = "".join(resp.iter_text())
+
+    t2 = threading.Thread(target=run_second)
+    t2.start()
+    time.sleep(0.2)   # give the second request a moment to subscribe before unblocking sections
+    llm.gate.set()    # let sections finish; both streams should now drain
+
+    t1.join(timeout=15)
+    t2.join(timeout=15)
+    assert not t1.is_alive() and not t2.is_alive()
+
+    assert llm.entity_calls == 1                       # one generation, not two
+    # entity_calls alone doesn't prove single-flight: entity resolution is independently
+    # cache-guarded in _resolve_entity_cached, so it stays at 1 even if a second, fully
+    # independent generation ran. Section synthesis is NOT cache-guarded across concurrent
+    # runs the same way, so it's the real signal for double spend. One generation computes
+    # exactly one section per dimension: the five Tavily dims (LEGAL, SAFETY, FINANCIAL,
+    # CERTIFICATIONS, NEWS) plus BACKLOG, all uncached on a brand-new vendor -> 6 calls.
+    # If a second generation ran independently (the pre-fix bug), this would be ~12.
+    assert llm.section_calls == 6                      # one generation's worth, not two
+    names2 = _event_names(result2["body"])
+    assert names2[0] == "entity_resolved"              # history was replayed
+    assert names2[-1] == "report_complete"
+    assert _event_names(result1["body"])[-1] == "report_complete"
+
+
+def test_delete_mid_generation_evicts_the_cache_the_zombie_run_writes(tmp_path):
+    """Deleting a vendor evicts its cache — but generation keeps running and used
+    to re-write sections AFTER that eviction, resurrecting a report for a vendor
+    that no longer exists (and poisoning a later re-add). The generation thread
+    must clean up after itself when its vendor is gone."""
+    import time
+
+    from vendor_dd.engine.cache import SQLiteCache
+
+    llm = GatedLLM()
+    deps = Deps(search=FakeSearch(), llm=llm, cache_path=tmp_path / "db.sqlite",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    app = create_app(deps)
+    client = TestClient(app)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    # Same TestClient buffering issue as the single-flight test above: run the stream
+    # on its own thread and use vendor_key (backfilled the instant EntityResolved
+    # fires) as the "generation is now blocked on the gate" signal.
+    t = threading.Thread(
+        target=lambda: client.get(f"/vendors/{vid}/report/stream").text)
+    t.start()
+
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and app.state.store.get_vendor(vid).vendor_key is None:
+        time.sleep(0.02)
+    assert app.state.store.get_vendor(vid).vendor_key is not None, "entity never resolved"
+
+    client.delete(f"/vendors/{vid}")   # runs its own eviction; the run is still gated
+    llm.gate.set()                     # sections now synthesize and hit the cache
+    t.join(timeout=15)
+    assert not t.is_alive()
+
+    # generation drains, notices the vendor is gone, and evicts what it wrote
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        cache = SQLiteCache(tmp_path / "db.sqlite")
+        sections = cache.all_sections("cives.com")
+        cache.close()
+        if not sections:
+            break
+        time.sleep(0.05)
+    assert sections == {}, "zombie generation resurrected evicted cache entries"
+
+
+def test_blank_names_are_rejected_and_stored_names_are_trimmed(tmp_path):
+    client = _client(tmp_path)
+    assert client.post("/projects", json={"name": "   "}).status_code == 422
+    pid = client.post("/projects", json={"name": "  Bridge job  "}).json()["id"]
+    assert client.get(f"/projects/{pid}").json()["name"] == "Bridge job"
+
+    assert client.post(f"/projects/{pid}/vendors", json={"name": " \t "}).status_code == 422
+    v = client.post(f"/projects/{pid}/vendors", json={"name": "  Cives Steel  "}).json()
+    assert v["name"] == "Cives Steel"
+
+
+def test_delete_project_removes_it_and_its_vendors(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    assert client.delete(f"/projects/{pid}").status_code == 200
+    assert client.get(f"/projects/{pid}").status_code == 404
+    assert client.get(f"/vendors/{vid}/report").status_code == 404
+    assert client.delete("/projects/9999").status_code == 404
+
+
+def test_project_detail_flags_domain_level_duplicates(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    v1 = client.post(f"/projects/{pid}/vendors", json={"name": "Voith"}).json()["id"]
+    v2 = client.post(f"/projects/{pid}/vendors", json={"name": "Voith Hydro"}).json()["id"]
+    store = client.app.state.store
+    store.set_vendor_key(v1, "voith.com")
+    store.set_vendor_key(v2, "voith.com")
+
+    vendors = client.get(f"/projects/{pid}").json()["vendors"]
+    assert vendors[0]["duplicate_of"] is None
+    assert vendors[1]["duplicate_of"] == "Voith"   # points at the earlier (canonical) row

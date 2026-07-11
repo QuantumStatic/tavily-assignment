@@ -1,4 +1,4 @@
-import type { EntityCard, Report, ReportStreamEvent, Section, VendorSummary } from './types'
+import type { EntityCard, Report, ReportStreamEvent, Section, VendorSummary, VendorReport } from './types'
 import { DIMENSIONS } from './dimensions'
 
 export type CellState = 'idle' | 'pending' | 'failed' | { score: number }
@@ -15,6 +15,7 @@ export interface RowState {
   report?: Report
   sectionsPresent?: number
   sectionsExpected?: number
+  duplicateOf?: string | null
 }
 
 const cellsWith = (value: CellState): Record<string, CellState> =>
@@ -33,6 +34,7 @@ export function rowFromSummary(v: VendorSummary): RowState {
     vendorId: v.vendor_id, name: v.name, vendorKey: v.vendor_key,
     cells: cellsWith('idle'), verdict: 'idle', status: 'idle',
     sectionsPresent: v.sections_present, sectionsExpected: v.sections_expected,
+    duplicateOf: v.duplicate_of ?? null,
   }
   if (!v.generated) return base
   const cells = cellsWith('failed')
@@ -73,5 +75,23 @@ export function reduceEvent(row: RowState, ev: ReportStreamEvent): RowState {
       )
       return { ...row, status: 'error', errorMsg: ev.message, verdict: 'failed', cells }
     }
+  }
+}
+
+/** Finish a row from the polled read model — the poll-path twin of report_complete. */
+export function rowFromReport(row: RowState, r: VendorReport): RowState {
+  const complete = r.verdict_score != null && r.verdict_reasoning != null && r.entity != null
+  return {
+    ...row,
+    status: 'done',
+    entity: r.entity ?? row.entity,
+    cells: cellsFromSections(r.sections),
+    verdict: r.verdict_score == null ? 'failed' : { score: r.verdict_score },
+    report: complete ? {
+      vendor_input: row.name, entity: r.entity!, sections: r.sections,
+      verdict_score: r.verdict_score!, verdict_reasoning: r.verdict_reasoning!,
+    } : undefined,
+    sectionsPresent: r.sections_present,
+    sectionsExpected: r.sections_expected,
   }
 }

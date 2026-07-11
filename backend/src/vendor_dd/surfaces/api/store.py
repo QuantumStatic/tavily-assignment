@@ -55,10 +55,6 @@ class Store:
                  session_id TEXT
                )"""
         )
-        # Migrate a DB created before session_id existed (Phase 2). No-op on fresh DBs.
-        cols = {row[1] for row in self._exec("PRAGMA table_info(projects)").fetchall()}
-        if "session_id" not in cols:
-            self._exec("ALTER TABLE projects ADD COLUMN session_id TEXT")
         self._exec(
             """CREATE TABLE IF NOT EXISTS vendors (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,6 +65,12 @@ class Store:
                  FOREIGN KEY (project_id) REFERENCES projects(id)
                )"""
         )
+        # One row per (project, name) — normalized the same way find_vendor matches.
+        # Enforced in the DB so a concurrent double-add can't slip past the
+        # check-then-insert in the route.
+        self._exec(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_vendors_project_name "
+            "ON vendors(project_id, LOWER(TRIM(name)))")
         self._conn.commit()
 
     def _exec(self, sql: str, params: tuple = ()):
@@ -99,6 +101,14 @@ class Store:
         row = cur.fetchone()
         return Project(*row) if row else None
 
+    def remove_project(self, project_id: int) -> None:
+        # Cascade through remove_vendor so every vendor gets the same refcounted
+        # cache eviction a single delete gets.
+        for v in self.list_vendors(project_id):
+            self.remove_vendor(v.id)
+        self._exec("DELETE FROM projects WHERE id=?", (project_id,))
+        self._conn.commit()
+
     def find_vendor(self, project_id: int, name: str) -> Vendor | None:
         """A vendor in this project with the same name (case/space-insensitive), if any."""
         cur = self._exec(
@@ -115,6 +125,39 @@ class Store:
         self._conn.commit()
         return Vendor(id=cur.lastrowid, project_id=project_id, name=name,
                       vendor_key=None, created_at=ts)
+
+    def rename_vendor(self, vendor_id: int, name: str) -> Vendor | None:
+        """Rename without losing research: sections are cached under the domain key
+        (unchanged by a rename); only the snapshot entry is keyed by the normalized
+        NAME, so move it to the new key — unless another vendor row still uses the
+        old name, in which case it keeps its snapshot. Raises sqlite3.IntegrityError
+        if the new name collides within the project (unique index)."""
+        old = self.get_vendor(vendor_id)
+        if old is None:
+            return None
+        self._exec("UPDATE vendors SET name=? WHERE id=?", (name, vendor_id))
+        old_key, new_key = old.name.strip().lower(), name.strip().lower()
+        has_cache = self._exec(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_cache'").fetchone()
+        if has_cache and old_key != new_key:
+            still_referenced = self._exec(
+                "SELECT 1 FROM vendors WHERE LOWER(TRIM(name))=? LIMIT 1", (old_key,)).fetchone()
+            if not still_referenced:
+                # report_cache is shared by name across projects, so some other vendor
+                # may already have valid data cached at new_key. INSERT OR IGNORE only
+                # copies over section_types that new_key doesn't already have, so any
+                # pre-existing data at new_key always wins and is never overwritten;
+                # the old vendor's stale rows for those section_types are simply
+                # dropped once old_key is cleared out below.
+                self._exec(
+                    "INSERT OR IGNORE INTO report_cache "
+                    "(vendor_key, section_type, content, sources, fetched_at) "
+                    "SELECT ?, section_type, content, sources, fetched_at "
+                    "FROM report_cache WHERE vendor_key=?",
+                    (new_key, old_key))
+                self._exec("DELETE FROM report_cache WHERE vendor_key=?", (old_key,))
+        self._conn.commit()
+        return self.get_vendor(vendor_id)
 
     def list_vendors(self, project_id: int) -> list[Vendor]:
         cur = self._exec(
@@ -135,6 +178,13 @@ class Store:
         self._exec("DELETE FROM vendors WHERE id=?", (vendor_id,))
         if row is not None:
             self._clear_cache(*row)
+        self._conn.commit()
+
+    def evict_unreferenced(self, name: str, vendor_key: str | None) -> None:
+        """Evict this vendor's cached research unless another vendor row still
+        references it — same refcount rules as delete. Used by report generation
+        when it finishes after its vendor was deleted mid-run."""
+        self._clear_cache(name, vendor_key)
         self._conn.commit()
 
     def _clear_cache(self, name: str, vendor_key: str | None) -> None:
