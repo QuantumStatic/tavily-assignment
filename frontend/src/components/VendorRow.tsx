@@ -5,12 +5,13 @@ import { DimensionCell } from './DimensionCell'
 import { bandForScore } from '../band'
 
 export function VendorRow({
-  row, onSelect, onDelete, onRename,
+  row, onSelect, onDelete, onRename, onResume,
 }: {
   row: RowState
   onSelect: (id: number) => void
   onDelete: (id: number) => void
   onRename: (id: number, name: string) => void
+  onResume: (id: number) => void
 }) {
   const [draft, setDraft] = useState<string | null>(null)   // non-null while editing
   const verdict = row.verdict
@@ -19,6 +20,13 @@ export function VendorRow({
     setDraft(null)
     if (name && name !== row.name) onRename(row.vendorId, name)
   }
+  // Resumable: research errored, never ran/never finished (idle), or a backend
+  // restart left it partially cached. Re-opening the stream replays cached
+  // sections instantly and re-researches only the missing ones.
+  const resumable =
+    row.status === 'error' ||
+    row.status === 'idle' ||
+    (row.status === 'done' && (row.sectionsPresent ?? 0) < (row.sectionsExpected ?? 0))
   return (
     <tr
       className="vendor-row"
@@ -72,6 +80,16 @@ export function VendorRow({
         <DimensionCell key={d.key} dim={d.key} state={row.cells[d.key] ?? 'idle'} />
       ))}
       <td className="cell">
+        {resumable && (
+          <button
+            className="icon-btn resume-btn"
+            aria-label="Resume research"
+            title="Resume research"
+            onClick={(e) => { e.stopPropagation(); onResume(row.vendorId) }}
+          >
+            ⟳
+          </button>
+        )}
         <button
           className="delete-btn"
           aria-label="Delete vendor"
