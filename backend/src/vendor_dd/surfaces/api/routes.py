@@ -88,6 +88,8 @@ def add_vendor(project_id: int, body: VendorIn, request: Request):
     store = _store(request)
     if store.get_project(project_id) is None:
         raise HTTPException(status_code=404, detail="project not found")
+    if store.find_vendor(project_id, body.name) is not None:
+        raise HTTPException(status_code=409, detail="Vendor already added to this project")
     v = store.add_vendor(project_id, body.name)
     return VendorOut(id=v.id, project_id=v.project_id, name=v.name,
                      vendor_key=v.vendor_key, created_at=v.created_at)

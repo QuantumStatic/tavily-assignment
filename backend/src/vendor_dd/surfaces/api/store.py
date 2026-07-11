@@ -99,6 +99,14 @@ class Store:
         row = cur.fetchone()
         return Project(*row) if row else None
 
+    def find_vendor(self, project_id: int, name: str) -> Vendor | None:
+        """A vendor in this project with the same name (case/space-insensitive), if any."""
+        cur = self._exec(
+            "SELECT id, project_id, name, vendor_key, created_at FROM vendors "
+            "WHERE project_id=? AND LOWER(TRIM(name))=LOWER(TRIM(?))", (project_id, name))
+        row = cur.fetchone()
+        return Vendor(*row) if row else None
+
     def add_vendor(self, project_id: int, name: str) -> Vendor:
         ts = self._clock()
         cur = self._exec(

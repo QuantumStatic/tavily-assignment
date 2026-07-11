@@ -119,8 +119,9 @@ export default function App() {
         },
       )
       streams.current.set(v.id, close)
-    } catch {
-      setError('Could not add the vendor.')
+    } catch (e) {
+      // surface the API's message (e.g. "Vendor already added to this project")
+      setError(e instanceof Error ? e.message : 'Could not add the vendor.')
     }
   }
 

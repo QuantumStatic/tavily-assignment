@@ -26,6 +26,16 @@ def test_add_list_remove_vendors(tmp_path):
     assert store.get_vendor(v.id) is None
 
 
+def test_find_vendor_matches_case_and_whitespace_insensitively_within_project(tmp_path):
+    store = _store(tmp_path)
+    a = store.create_project("A")
+    b = store.create_project("B")
+    v = store.add_vendor(a.id, "Cives Steel")
+    assert store.find_vendor(a.id, "  cives steel  ").id == v.id   # case/space-insensitive
+    assert store.find_vendor(a.id, "Nucor") is None
+    assert store.find_vendor(b.id, "Cives Steel") is None          # scoped to the project
+
+
 def test_remove_vendor_clears_its_cached_research(tmp_path):
     """Deleting a vendor must evict its cache (both the name-keyed snapshot and the
     domain-keyed sections) so a re-add re-runs fresh instead of serving stale results."""
