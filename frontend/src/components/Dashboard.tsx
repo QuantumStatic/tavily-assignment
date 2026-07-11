@@ -90,6 +90,12 @@ export function Dashboard({ stats, onOpenVendor }: {
                 <span className="vname">{e.ref.name}</span>
                 <span className="why">{e.ref.project_name}</span>
                 <span className="score">{e.verdict}</span>
+                {e.previous_verdict != null && (
+                  <span className="delta">
+                    {e.verdict >= e.previous_verdict ? '▲' : '▼'}
+                    {Math.abs(e.verdict - e.previous_verdict)}
+                  </span>
+                )}
               </div>
             ))}
           </div>

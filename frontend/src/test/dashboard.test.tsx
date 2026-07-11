@@ -39,6 +39,11 @@ test('names the weakest dimension', () => {
   expect(screen.getByText(/is the softest axis/i)).toBeInTheDocument()
 })
 
+test('renders a delta marker on shortlist entries with a previous verdict', () => {
+  render(<Dashboard stats={stats} onOpenVendor={() => {}} />)
+  expect(screen.getByText(/▲1/)).toBeInTheDocument()
+})
+
 test('empty-selection state when nothing selected', () => {
   const empty = { ...stats, projects_selected: 0, vendors_total: 0, vendors_generated: 0, avg_verdict: null }
   render(<Dashboard stats={empty} onOpenVendor={() => {}} />)
