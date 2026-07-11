@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import contextvars
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from typing import Callable, Iterator, Literal
 
 from vendor_dd.engine.backlog import build_quote_url
 from vendor_dd.engine.cache import SQLiteCache
+from vendor_dd.engine.locks import KeyedLocks
 from vendor_dd.engine.entity import resolve_entity
 from vendor_dd.engine.events import (
     EntityResolved, ReportComplete, ReportError, ReportEvent, SectionComplete, SectionError,
@@ -71,11 +73,19 @@ class ReportEngine:
     """
 
     def __init__(self, deps: Deps, *, mode: Literal["parallel", "sequential"] = "parallel",
-                 max_workers: int = 6, session_id: str | None = None):
+                 max_workers: int = 6, session_id: str | None = None,
+                 domain_locks: KeyedLocks | None = None):
         self._deps = deps
         self._max_workers = 1 if mode == "sequential" else max_workers
         self._search: SearchClient = (
             _SessionSearch(deps.search, session_id) if session_id else deps.search)
+        # When provided, section generation is single-flighted by resolved domain so two
+        # vendors sharing a domain don't both pay for the Tavily/LLM pass. Absent (CLI,
+        # unit tests) it's a no-op and generation runs unserialized.
+        self._domain_locks = domain_locks
+
+    def _domain_guard(self, vendor_key: str):
+        return self._domain_locks.acquire(vendor_key) if self._domain_locks else contextlib.nullcontext()
 
     def run_report(self, vendor: str) -> Report:
         report: Report | None = None
@@ -100,45 +110,54 @@ class ReportEngine:
             yield EntityResolved(entity=entity)
 
             vendor_key = (entity.domain or entity.name).strip().lower()
+            # Cache the entity snapshot under the DOMAIN key (not just the name key that
+            # _resolve_entity_cached uses for resolution-skip). The read model reads it by
+            # vendor_key, which is stable across a rename — so a rename landing mid-generation
+            # can't orphan the snapshot under a name nobody looks up anymore.
+            cache.put(vendor_key, Dimension.SNAPSHOT, entity.model_dump(mode="json"))
             sections: list[Section] = []
             news_results: list[dict] | None = None
 
-            with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
-                pending: dict = {}
-                for dim in _TAVILY_DIMS:
-                    cached = cache.get(vendor_key, dim)
-                    if cached is not None:
-                        section = Section.model_validate(cached)
-                        sections.append(section)
-                        yield SectionComplete(section=section, cached=True)
-                        continue
-                    ctx = contextvars.copy_context()
-                    pending[pool.submit(ctx.run, self._compute_section, dim, entity)] = dim
+            # Single-flight the expensive section+backlog work by domain: a concurrent
+            # generation for another vendor that resolves to the SAME domain blocks here,
+            # then finds every section already cached instead of re-paying for it.
+            with self._domain_guard(vendor_key):
+                with ThreadPoolExecutor(max_workers=self._max_workers) as pool:
+                    pending: dict = {}
+                    for dim in _TAVILY_DIMS:
+                        cached = cache.get(vendor_key, dim)
+                        if cached is not None:
+                            section = Section.model_validate(cached)
+                            sections.append(section)
+                            yield SectionComplete(section=section, cached=True)
+                            continue
+                        ctx = contextvars.copy_context()
+                        pending[pool.submit(ctx.run, self._compute_section, dim, entity)] = dim
 
-                for fut in as_completed(pending):
-                    dim = pending[fut]
-                    try:
-                        outcome = fut.result()
-                    except Exception as exc:  # one dimension failed; the report goes on without it
-                        _LOG.error("section.error", extra={"payload": {"dimension": dim.value, "error": str(exc)}})
-                        yield SectionError(dimension=dim, message=f"{dim.value} lookup failed")
-                        continue
-                    cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
-                              sources=outcome.raw_results)
-                    if dim is Dimension.NEWS:
-                        news_results = outcome.raw_results
-                    sections.append(outcome.section)
-                    yield SectionComplete(section=outcome.section, cached=False)
+                    for fut in as_completed(pending):
+                        dim = pending[fut]
+                        try:
+                            outcome = fut.result()
+                        except Exception as exc:  # one dimension failed; the report goes on without it
+                            _LOG.error("section.error", extra={"payload": {"dimension": dim.value, "error": str(exc)}})
+                            yield SectionError(dimension=dim, message=f"{dim.value} lookup failed")
+                            continue
+                        cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
+                                  sources=outcome.raw_results)
+                        if dim is Dimension.NEWS:
+                            news_results = outcome.raw_results
+                        sections.append(outcome.section)
+                        yield SectionComplete(section=outcome.section, cached=False)
 
-            try:
-                backlog, backlog_cached = self._backlog_section(entity, cache, vendor_key,
-                                                                 news_results)
-            except Exception as exc:  # fatal: report would be incomplete without backlog
-                _LOG.error("report.error", extra={"payload": {"stage": "backlog", "error": str(exc)}})
-                yield ReportError(message="report could not be generated")
-                return
-            sections.append(backlog)
-            yield SectionComplete(section=backlog, cached=backlog_cached)
+                try:
+                    backlog, backlog_cached = self._backlog_section(entity, cache, vendor_key,
+                                                                    news_results)
+                except Exception as exc:  # fatal: report would be incomplete without backlog
+                    _LOG.error("report.error", extra={"payload": {"stage": "backlog", "error": str(exc)}})
+                    yield ReportError(message="report could not be generated")
+                    return
+                sections.append(backlog)
+                yield SectionComplete(section=backlog, cached=backlog_cached)
 
             try:
                 score, reasoning = assemble_verdict(sections)

@@ -176,7 +176,9 @@ def get_report(vendor_id: int, request: Request):
                                 sections_present=0, sections_expected=EXPECTED_SECTIONS)
         sections = [sec for sec, _ in parsed.values()]
         score, reasoning = assemble_verdict(sections)
-        entity_raw = cache.get(vendor.name.strip().lower(), Dimension.SNAPSHOT)
+        # snapshot is keyed by domain (vendor_key), stable across renames; we only reach
+        # here when sections exist, which requires vendor_key to be set.
+        entity_raw = cache.get(vendor.vendor_key, Dimension.SNAPSHOT)
         entity = EntityCard.model_validate(entity_raw) if entity_raw else None
     finally:
         cache.close()
@@ -202,7 +204,8 @@ def stream_report(vendor_id: int, request: Request):
     if created:
         project = store.get_project(vendor.project_id)
         session_id = project.session_id if project else None
-        engine = ReportEngine(request.app.state.deps, mode="parallel", session_id=session_id)
+        engine = ReportEngine(request.app.state.deps, mode="parallel", session_id=session_id,
+                              domain_locks=request.app.state.domain_locks)
 
         # Decouple the WORK from the STREAM. Generation runs in a background thread
         # and drains to completion regardless of listeners; the pipeline caches each

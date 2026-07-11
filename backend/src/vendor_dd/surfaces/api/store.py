@@ -127,35 +127,13 @@ class Store:
                       vendor_key=None, created_at=ts)
 
     def rename_vendor(self, vendor_id: int, name: str) -> Vendor | None:
-        """Rename without losing research: sections are cached under the domain key
-        (unchanged by a rename); only the snapshot entry is keyed by the normalized
-        NAME, so move it to the new key — unless another vendor row still uses the
-        old name, in which case it keeps its snapshot. Raises sqlite3.IntegrityError
-        if the new name collides within the project (unique index)."""
-        old = self.get_vendor(vendor_id)
-        if old is None:
+        """Rename without losing research. All cached research — sections AND the entity
+        snapshot — is keyed by the resolved DOMAIN (vendor_key), which a rename never
+        touches, so there's no cache to migrate: just update the name. Raises
+        sqlite3.IntegrityError if the new name collides within the project (unique index)."""
+        if self.get_vendor(vendor_id) is None:
             return None
         self._exec("UPDATE vendors SET name=? WHERE id=?", (name, vendor_id))
-        old_key, new_key = old.name.strip().lower(), name.strip().lower()
-        has_cache = self._exec(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='report_cache'").fetchone()
-        if has_cache and old_key != new_key:
-            still_referenced = self._exec(
-                "SELECT 1 FROM vendors WHERE LOWER(TRIM(name))=? LIMIT 1", (old_key,)).fetchone()
-            if not still_referenced:
-                # report_cache is shared by name across projects, so some other vendor
-                # may already have valid data cached at new_key. INSERT OR IGNORE only
-                # copies over section_types that new_key doesn't already have, so any
-                # pre-existing data at new_key always wins and is never overwritten;
-                # the old vendor's stale rows for those section_types are simply
-                # dropped once old_key is cleared out below.
-                self._exec(
-                    "INSERT OR IGNORE INTO report_cache "
-                    "(vendor_key, section_type, content, sources, fetched_at) "
-                    "SELECT ?, section_type, content, sources, fetched_at "
-                    "FROM report_cache WHERE vendor_key=?",
-                    (new_key, old_key))
-                self._exec("DELETE FROM report_cache WHERE vendor_key=?", (old_key,))
         self._conn.commit()
         return self.get_vendor(vendor_id)
 
