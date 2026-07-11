@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from '../App'
 import { FakeEventSource } from './fakeEventSource'
+import { DIMENSIONS } from '../dimensions'
 
 type MockApiOptions = {
   projects?: { id: number; name: string; created_at: string }[]
@@ -108,12 +109,24 @@ test('add a vendor, watch cells stream in, open the report panel', async () => {
   expect(screen.getByRole('link', { name: /X/ })).toHaveAttribute('href', 'https://x.com')
 })
 
-test('a dropped SSE stream marks the row failed instead of leaving it pending forever', async () => {
-  mockApi()
+const completedReport = {
+  generated: true, vendor_key: 'cives.com',
+  entity: { name: 'Cives Steel', domain: 'cives.com', country: null, industry: null,
+            parent: null, is_public: false, ticker: null, exchange: null },
+  verdict_score: 7, verdict_reasoning: 'Solid.',
+  // fully generated: one section per dimension, so no cell is left "failed"
+  sections: DIMENSIONS.map((d) => ({ dimension: d.key, score: 8, findings: [], reasoning: 'clean' })),
+  sections_present: DIMENSIONS.length, sections_expected: DIMENSIONS.length,
+}
+
+test('a dropped SSE stream falls back to polling the report, not failing the row', async () => {
+  // The backend finishes and caches the report even when the stream dies —
+  // the row must recover via GET /report instead of telling the user to
+  // delete and re-add (which would evict the completing report).
+  mockApi({ vendorReports: { 5: completedReport } })
   render(<App />)
 
   await screen.findByRole('heading', { name: 'Bridge job' })
-
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
   await screen.findByText('Cives Steel')
@@ -124,14 +137,36 @@ test('a dropped SSE stream marks the row failed instead of leaving it pending fo
     return e
   })
   es.emit('entity_resolved', { entity: { name: 'Cives Steel', domain: 'cives.com' } })
+  es.fail()   // stream drops; the immediate poll finds the finished report
 
-  // stream drops before completion
+  await waitFor(() => expect(screen.getByText('7/10')).toBeInTheDocument())
+  expect(screen.queryByText(/stream dropped/i)).toBeNull()
+  expect(document.querySelector('.vendor-row .failed')).toBeNull()
+})
+
+test('while the polled report is still generating, the row keeps streaming', async () => {
+  mockApi({ vendorReports: { 5: { ...completedReport, generated: false, sections: [],
+                                   verdict_score: null, verdict_reasoning: null, entity: null } } })
+  render(<App />)
+
+  await screen.findByRole('heading', { name: 'Bridge job' })
+  await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
+  await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
+  await screen.findByText('Cives Steel')
+
+  const es = await waitFor(() => {
+    const e = FakeEventSource.last()
+    if (!e) throw new Error('no stream yet')
+    return e
+  })
+  es.emit('entity_resolved', { entity: { name: 'Cives Steel', domain: 'cives.com' } })
   es.fail()
 
-  // the verdict cell shows failed, not a perpetual pending spinner
-  await waitFor(() => expect(document.querySelector('.vendor-row .failed')).not.toBeNull())
-  expect(document.querySelector('.vendor-row .dot')).toBeNull()
-  expect(screen.getByText(/stream dropped/i)).toBeInTheDocument()
+  // the immediate poll returns generated:false -> still streaming, no failure UI
+  await waitFor(() =>
+    expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).endsWith('/vendors/5/report'))).toBe(true))
+  expect(document.querySelector('.vendor-row .dot')).not.toBeNull()
+  expect(screen.queryByText(/stream dropped/i)).toBeNull()
 })
 
 test('selecting an already-generated vendor fetches its report from the REST endpoint', async () => {

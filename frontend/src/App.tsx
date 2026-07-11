@@ -1,8 +1,8 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import type { Project } from './types'
-import type { ReportStreamEvent } from './types'
+import type { ReportStreamEvent, VendorReport } from './types'
 import type { RowState } from './rows'
-import { rowFromSummary, startStreaming, reduceEvent } from './rows'
+import { rowFromSummary, startStreaming, reduceEvent, rowFromReport } from './rows'
 import { DIMENSIONS } from './dimensions'
 import { api } from './api'
 import { openReportStream } from './stream'
@@ -20,6 +20,7 @@ type RowsAction =
   | { kind: 'event'; vendorId: number; ev: ReportStreamEvent }
   | { kind: 'setReport'; vendorId: number; report: RowState['report']; entity: RowState['entity']
       sectionsPresent?: number; sectionsExpected?: number }
+  | { kind: 'fromReport'; vendorId: number; report: VendorReport }
 
 function rowsReducer(state: RowState[], action: RowsAction): RowState[] {
   switch (action.kind) {
@@ -39,8 +40,14 @@ function rowsReducer(state: RowState[], action: RowsAction): RowState[] {
         ? { ...r, report: action.report, entity: action.entity ?? r.entity,
             sectionsPresent: action.sectionsPresent ?? r.sectionsPresent,
             sectionsExpected: action.sectionsExpected ?? r.sectionsExpected } : r)
+    case 'fromReport':
+      return state.map((r) =>
+        r.vendorId === action.vendorId ? rowFromReport(r, action.report) : r)
   }
 }
+
+const POLL_MS = 3000
+const MAX_POLLS = 100   // ~5 minutes of polling before we give up
 
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -119,8 +126,9 @@ export default function App() {
         v.id,
         (ev) => dispatch({ kind: 'event', vendorId: v.id, ev }),
         () => {
-          dispatch({ kind: 'event', vendorId: v.id, ev: { type: 'report_error', message: 'stream dropped' } })
-          setError('The report stream dropped — the row is marked failed. Delete and re-add to retry.')
+          // stream dropped, but the work continues server-side — recover via polling
+          streams.current.delete(v.id)
+          pollReport(v.id)
         },
       )
       streams.current.set(v.id, close)
@@ -128,6 +136,37 @@ export default function App() {
       // surface the API's message (e.g. "Vendor already added to this project")
       setError(e instanceof Error ? e.message : 'Could not add the vendor.')
     }
+  }
+
+  // The backend keeps generating (and caching) even when the SSE stream dies, so a
+  // dropped stream is not a failure — poll the read model until the report lands.
+  function pollReport(vendorId: number) {
+    let attempts = 0
+    const id = window.setInterval(() => void check(), POLL_MS)
+    const stop = () => {
+      window.clearInterval(id)
+      streams.current.delete(vendorId)
+    }
+    async function check() {
+      attempts += 1
+      try {
+        const r = await api.getReport(vendorId)
+        if (r.generated) {
+          stop()
+          dispatch({ kind: 'fromReport', vendorId, report: r })
+          return
+        }
+      } catch {
+        // transient (backend restarting, network blip) — keep polling
+      }
+      if (attempts >= MAX_POLLS) {
+        stop()
+        dispatch({ kind: 'event', vendorId, ev: { type: 'report_error', message: 'report generation stalled' } })
+        setError('Report generation stalled — press ⟳ on the row to retry.')
+      }
+    }
+    streams.current.set(vendorId, () => window.clearInterval(id))   // project-switch/unmount cleanup
+    void check()   // immediate first check: the backend may already be done
   }
 
   async function removeVendor(vendorId: number) {
