@@ -46,14 +46,14 @@ test('toggling an option emits the new selection', async () => {
 test('deselect all emits empty set', async () => {
   const onChange = setup(new Set([1, 2, 3]))
   await open()
-  await userEvent.click(screen.getByRole('button', { name: /deselect all/i }))
+  await userEvent.click(screen.getByRole('button', { name: /^deselect all$/i }))
   expect(onChange).toHaveBeenCalledWith(new Set())
 })
 
 test('select all emits every id', async () => {
   const onChange = setup(new Set([1]))
   await open()
-  await userEvent.click(screen.getByRole('button', { name: /select all/i }))
+  await userEvent.click(screen.getByRole('button', { name: /^select all$/i }))
   expect(onChange).toHaveBeenCalledWith(new Set([1, 2, 3]))
 })
 
