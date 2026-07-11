@@ -15,8 +15,8 @@ from vendor_dd.engine.synthesis import assemble_verdict
 from vendor_dd.surfaces.api.dashboard import DashboardStats, VendorRow, compute_dashboard
 from vendor_dd.surfaces.api.runs import DONE, RunRegistry
 from vendor_dd.surfaces.api.schemas import (
-    ChosenIn, DimensionScore, ProjectDetail, ProjectIn, ProjectOut, VendorIn, VendorOut,
-    VendorReport, VendorSummary,
+    ChosenIn, DimensionDelta, DimensionScore, ProjectDetail, ProjectIn, ProjectOut, VendorIn,
+    VendorOut, VendorReport, VendorSummary,
 )
 from vendor_dd.surfaces.api.sse import to_sse_frame
 from vendor_dd.surfaces.api.store import Store, Vendor
@@ -264,23 +264,43 @@ def get_report(vendor_id: int, request: Request):
     vendor = store.get_vendor(vendor_id)
     if vendor is None:
         raise HTTPException(status_code=404, detail="vendor not found")
+    history = request.app.state.history
     cache = _cache(request)
     try:
         parsed, entity_raw = _report_sections(cache, vendor.vendor_key) if vendor.vendor_key else ({}, None)
         if not parsed:
             return VendorReport(generated=False, vendor_key=vendor.vendor_key, entity=None,
                                 verdict_score=None, verdict_reasoning=None, sections=[],
-                                sections_present=0, sections_expected=EXPECTED_SECTIONS)
+                                sections_present=0, sections_expected=EXPECTED_SECTIONS,
+                                chosen_count=0, projects_count=0, dimension_deltas={})
         sections = [sec for sec, _ in parsed.values()]
         score, reasoning = assemble_verdict(sections)
         # entity snapshot is keyed by domain (stable across renames) and read TTL-free,
         # consistent with the sections shown alongside it.
         entity = EntityCard.model_validate(entity_raw) if entity_raw else None
+
+        # Trust counts span ALL projects (not just this vendor's own project), keyed
+        # by the resolved vendor_key/domain — the same vendor may have been added
+        # independently to several projects.
+        chosen_count = projects_count = 0
+        deltas: dict[str, DimensionDelta | None] = {}
+        if vendor.vendor_key:
+            for other in store.list_all_vendors():
+                if other.vendor_key == vendor.vendor_key:
+                    projects_count += 1
+                    if other.chosen:
+                        chosen_count += 1
+            for d, (_sec, _ts) in parsed.items():
+                prev = history.previous(vendor.vendor_key, d.value)
+                deltas[d.value] = (DimensionDelta(score=prev[0], recorded_on=prev[1])
+                                   if prev else None)
     finally:
         cache.close()
     return VendorReport(generated=True, vendor_key=vendor.vendor_key, entity=entity,
                         verdict_score=score, verdict_reasoning=reasoning, sections=sections,
-                        sections_present=len(parsed), sections_expected=EXPECTED_SECTIONS)
+                        sections_present=len(parsed), sections_expected=EXPECTED_SECTIONS,
+                        chosen_count=chosen_count, projects_count=projects_count,
+                        dimension_deltas=deltas)
 
 
 @router.get("/vendors/{vendor_id}/report/stream")
@@ -301,7 +321,8 @@ def stream_report(vendor_id: int, request: Request):
         project = store.get_project(vendor.project_id)
         session_id = project.session_id if project else None
         engine = ReportEngine(request.app.state.deps, mode="parallel", session_id=session_id,
-                              domain_locks=request.app.state.domain_locks)
+                              domain_locks=request.app.state.domain_locks,
+                              history=request.app.state.history)
 
         # Decouple the WORK from the STREAM. Generation runs in a background thread
         # and drains to completion regardless of listeners; the pipeline caches each
