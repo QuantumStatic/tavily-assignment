@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextvars
-import queue
 import sqlite3
 import threading
 
@@ -13,6 +12,7 @@ from vendor_dd.engine.events import EntityResolved
 from vendor_dd.engine.pipeline import ReportEngine
 from vendor_dd.engine.schemas import Dimension, EntityCard, Section
 from vendor_dd.engine.synthesis import assemble_verdict
+from vendor_dd.surfaces.api.runs import DONE, RunRegistry
 from vendor_dd.surfaces.api.schemas import (
     DimensionScore, ProjectDetail, ProjectIn, ProjectOut, VendorIn, VendorOut,
     VendorReport, VendorSummary,
@@ -23,8 +23,6 @@ from vendor_dd.surfaces.api.store import Store, Vendor
 router = APIRouter()
 
 EXPECTED_SECTIONS = len([d for d in Dimension if d is not Dimension.SNAPSHOT])
-
-_STREAM_DONE = object()   # queue sentinel: report generation finished
 
 
 def _store(request: Request) -> Store:
@@ -149,36 +147,52 @@ def stream_report(vendor_id: int, request: Request):
     vendor = store.get_vendor(vendor_id)
     if vendor is None:
         raise HTTPException(status_code=404, detail="vendor not found")
-    project = store.get_project(vendor.project_id)
-    session_id = project.session_id if project else None
-    engine = ReportEngine(request.app.state.deps, mode="parallel", session_id=session_id)
 
-    # Decouple the WORK from the STREAM. Generation runs in a background thread and drains
-    # to completion regardless of whether the client is still listening; the pipeline
-    # caches each section as it lands. So if the SSE breaks (e.g. the user switches
-    # projects) the report still finishes and is fully cached — coming back shows it done.
-    # The SSE below just tails the thread's events via a queue.
-    events: queue.Queue = queue.Queue()
+    # Single-flight per vendor: only the caller that CREATES the run starts a
+    # generation thread. A second stream (another tab, a refresh) subscribes to
+    # the same run — history replayed, then live events — instead of kicking off
+    # a duplicate generation that would double Tavily/LLM spend and race the cache.
+    registry: RunRegistry = request.app.state.runs
+    run, created = registry.get_or_create(vendor_id)
 
-    def generate() -> None:
-        try:
-            for ev in engine.iter_events(vendor.name):
-                if isinstance(ev, EntityResolved):
-                    key = (ev.entity.domain or ev.entity.name).strip().lower()
-                    store.set_vendor_key(vendor_id, key)  # backfill so the read model can join
-                events.put(ev)
-        finally:
-            events.put(_STREAM_DONE)
+    if created:
+        project = store.get_project(vendor.project_id)
+        session_id = project.session_id if project else None
+        engine = ReportEngine(request.app.state.deps, mode="parallel", session_id=session_id)
 
-    # copy_context so the request's correlation id follows the work into the thread
-    ctx = contextvars.copy_context()
-    threading.Thread(target=lambda: ctx.run(generate),
-                     name=f"report-{vendor_id}", daemon=True).start()
+        # Decouple the WORK from the STREAM. Generation runs in a background thread
+        # and drains to completion regardless of listeners; the pipeline caches each
+        # section as it lands, so a broken SSE still yields a finished, cached report.
+        def generate() -> None:
+            key: str | None = None
+            try:
+                for ev in engine.iter_events(vendor.name):
+                    if isinstance(ev, EntityResolved):
+                        key = (ev.entity.domain or ev.entity.name).strip().lower()
+                        if store.get_vendor(vendor_id) is not None:
+                            store.set_vendor_key(vendor_id, key)  # backfill for the read model
+                    run.publish(ev)
+            finally:
+                # The vendor may have been deleted while we worked. Its DELETE already
+                # evicted the cache — but we kept writing sections afterwards. Now that
+                # every write is done, evict again (refcount rules still apply, so a
+                # same-key vendor in another project keeps its report).
+                if store.get_vendor(vendor_id) is None:
+                    store.evict_unreferenced(vendor.name, key)
+                registry.remove(vendor_id)
+                run.finish()
+
+        # copy_context so the request's correlation id follows the work into the thread
+        ctx = contextvars.copy_context()
+        threading.Thread(target=lambda: ctx.run(generate),
+                         name=f"report-{vendor_id}", daemon=True).start()
+
+    subscription = run.subscribe()
 
     def event_source():
         while True:
-            ev = events.get()
-            if ev is _STREAM_DONE:
+            ev = subscription.get()
+            if ev is DONE:
                 break
             yield to_sse_frame(ev)
 

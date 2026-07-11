@@ -287,3 +287,125 @@ def test_add_vendor_lost_race_falls_back_to_the_existing_row(tmp_path, monkeypat
     assert dup.status_code == 200
     assert dup.json()["existed"] is True
     assert dup.json()["id"] == first["id"]
+
+
+import threading
+
+
+class GatedLLM:
+    """Entity resolution is instant; section synthesis blocks on a gate the test
+    controls, so generation stays in flight for as long as the test needs."""
+
+    def __init__(self):
+        self.gate = threading.Event()
+        self.entity_calls = 0
+
+    def structured(self, prompt, schema):
+        if schema is EntityCard:
+            self.entity_calls += 1
+            return EntityCard(name="Cives Steel", domain="cives.com", country="united states",
+                              industry="steel", is_public=False)
+        assert self.gate.wait(timeout=10), "test never opened the gate"
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="x", score=5)
+
+
+def test_second_stream_for_the_same_vendor_tails_the_existing_run(tmp_path):
+    """Two concurrent streams must NOT start two generations (double Tavily/LLM
+    spend, racing cache writes). The second subscriber replays history and tails.
+
+    NOTE: this FastAPI TestClient/httpx version buffers the entire SSE body before
+    iter_lines()/iter_text() yields anything, so a nested `with client.stream(...)`
+    never actually observes the first stream mid-flight — it just serializes the
+    two requests. We fall back to running each stream on its own thread and use
+    vendor_key (backfilled synchronously the moment EntityResolved fires, well
+    before section synthesis is even submitted) as the "generation is now blocked
+    on the gate" signal instead of a partial read of the SSE body."""
+    import time
+
+    llm = GatedLLM()
+    deps = Deps(search=FakeSearch(), llm=llm, cache_path=tmp_path / "db.sqlite",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    app = create_app(deps)
+    client = TestClient(app)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    result1: dict = {}
+    result2: dict = {}
+
+    def run_first():
+        with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+            result1["body"] = "".join(resp.iter_text())
+
+    t1 = threading.Thread(target=run_first)
+    t1.start()
+
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and app.state.store.get_vendor(vid).vendor_key is None:
+        time.sleep(0.02)
+    assert app.state.store.get_vendor(vid).vendor_key is not None, "entity never resolved"
+
+    def run_second():
+        with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+            result2["body"] = "".join(resp.iter_text())
+
+    t2 = threading.Thread(target=run_second)
+    t2.start()
+    time.sleep(0.2)   # give the second request a moment to subscribe before unblocking sections
+    llm.gate.set()    # let sections finish; both streams should now drain
+
+    t1.join(timeout=15)
+    t2.join(timeout=15)
+    assert not t1.is_alive() and not t2.is_alive()
+
+    assert llm.entity_calls == 1                       # one generation, not two
+    names2 = _event_names(result2["body"])
+    assert names2[0] == "entity_resolved"              # history was replayed
+    assert names2[-1] == "report_complete"
+    assert _event_names(result1["body"])[-1] == "report_complete"
+
+
+def test_delete_mid_generation_evicts_the_cache_the_zombie_run_writes(tmp_path):
+    """Deleting a vendor evicts its cache — but generation keeps running and used
+    to re-write sections AFTER that eviction, resurrecting a report for a vendor
+    that no longer exists (and poisoning a later re-add). The generation thread
+    must clean up after itself when its vendor is gone."""
+    import time
+
+    from vendor_dd.engine.cache import SQLiteCache
+
+    llm = GatedLLM()
+    deps = Deps(search=FakeSearch(), llm=llm, cache_path=tmp_path / "db.sqlite",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    app = create_app(deps)
+    client = TestClient(app)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    # Same TestClient buffering issue as the single-flight test above: run the stream
+    # on its own thread and use vendor_key (backfilled the instant EntityResolved
+    # fires) as the "generation is now blocked on the gate" signal.
+    t = threading.Thread(
+        target=lambda: client.get(f"/vendors/{vid}/report/stream").text)
+    t.start()
+
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and app.state.store.get_vendor(vid).vendor_key is None:
+        time.sleep(0.02)
+    assert app.state.store.get_vendor(vid).vendor_key is not None, "entity never resolved"
+
+    client.delete(f"/vendors/{vid}")   # runs its own eviction; the run is still gated
+    llm.gate.set()                     # sections now synthesize and hit the cache
+    t.join(timeout=15)
+    assert not t.is_alive()
+
+    # generation drains, notices the vendor is gone, and evicts what it wrote
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        cache = SQLiteCache(tmp_path / "db.sqlite")
+        sections = cache.all_sections("cives.com")
+        cache.close()
+        if not sections:
+            break
+        time.sleep(0.05)
+    assert sections == {}, "zombie generation resurrected evicted cache entries"

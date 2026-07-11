@@ -28,6 +28,10 @@ def create_app(deps: Deps, *, cors_origins: list[str] | None = None) -> FastAPI:
     )
     app.state.deps = deps
     app.state.store = Store(deps.cache_path)
+
+    from vendor_dd.surfaces.api.runs import RunRegistry
+    app.state.runs = RunRegistry()
+
     app.include_router(router)
     return app
 
