@@ -143,6 +143,13 @@ class Store:
             self._clear_cache(*row)
         self._conn.commit()
 
+    def evict_unreferenced(self, name: str, vendor_key: str | None) -> None:
+        """Evict this vendor's cached research unless another vendor row still
+        references it — same refcount rules as delete. Used by report generation
+        when it finishes after its vendor was deleted mid-run."""
+        self._clear_cache(name, vendor_key)
+        self._conn.commit()
+
     def _clear_cache(self, name: str, vendor_key: str | None) -> None:
         """Evict a deleted vendor's cached research so a re-add re-runs fresh. The cache
         is keyed by domain and SHARED across projects, so only evict a key if no other

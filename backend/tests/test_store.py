@@ -187,3 +187,39 @@ def test_store_enforces_unique_vendor_name_per_project(tmp_path):
     # the same name in a different project is a legitimate new row
     p2 = store.create_project("p2")
     assert store.add_vendor(p2.id, "Cives Steel").id > 0
+
+
+def _seed_cache(tmp_path, key: str):
+    from vendor_dd.engine.cache import SQLiteCache
+    from vendor_dd.engine.schemas import Dimension, Section
+
+    cache = SQLiteCache(tmp_path / "db.sqlite")
+    cache.put(key, Dimension.LEGAL,
+              Section(dimension=Dimension.LEGAL, findings=[], reasoning="x", score=5).model_dump(mode="json"))
+    cache.close()
+
+
+def _cached_sections(tmp_path, key: str):
+    from vendor_dd.engine.cache import SQLiteCache
+
+    cache = SQLiteCache(tmp_path / "db.sqlite")
+    rows = cache.all_sections(key)
+    cache.close()
+    return rows
+
+
+def test_evict_unreferenced_clears_cache_when_no_vendor_row_references_it(tmp_path):
+    store = _store(tmp_path)
+    _seed_cache(tmp_path, "cives.com")
+    store.evict_unreferenced("Cives Steel", "cives.com")
+    assert _cached_sections(tmp_path, "cives.com") == {}
+
+
+def test_evict_unreferenced_keeps_cache_while_a_vendor_still_references_it(tmp_path):
+    store = _store(tmp_path)
+    p = store.create_project("p")
+    v = store.add_vendor(p.id, "Cives Steel")
+    store.set_vendor_key(v.id, "cives.com")
+    _seed_cache(tmp_path, "cives.com")
+    store.evict_unreferenced("Cives Steel", "cives.com")   # still referenced -> no-op
+    assert _cached_sections(tmp_path, "cives.com") != {}
