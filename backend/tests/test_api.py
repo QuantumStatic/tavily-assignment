@@ -608,3 +608,23 @@ def test_two_vendors_same_domain_generate_sections_only_once(tmp_path):
     assert llm.section_calls == 6, f"expected one generation's worth, got {llm.section_calls}"
     assert client.get(f"/vendors/{a}/report").json()["generated"] is True
     assert client.get(f"/vendors/{b}/report").json()["generated"] is True
+
+
+def test_chosen_patch_round_trip(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+
+    r = client.patch(f"/vendors/{vid}/chosen", json={"chosen": True})
+    assert r.status_code == 200 and r.json()["chosen"] is True
+
+    detail = client.get(f"/projects/{pid}").json()
+    assert detail["vendors"][0]["chosen"] is True
+
+    r = client.patch(f"/vendors/{vid}/chosen", json={"chosen": False})
+    assert r.json()["chosen"] is False
+
+
+def test_chosen_patch_unknown_vendor_404(tmp_path):
+    client = _client(tmp_path)
+    assert client.patch("/vendors/9999/chosen", json={"chosen": True}).status_code == 404

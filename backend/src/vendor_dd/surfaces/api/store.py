@@ -35,6 +35,7 @@ class Vendor:
     name: str
     vendor_key: str | None
     created_at: str
+    chosen: bool = False
 
 
 class Store:
@@ -71,7 +72,17 @@ class Store:
         self._exec(
             "CREATE UNIQUE INDEX IF NOT EXISTS ux_vendors_project_name "
             "ON vendors(project_id, LOWER(TRIM(name)))")
+        # `chosen` marks a vendor the user actually hired — powers cross-project trust stats.
+        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(vendors)").fetchall()]
+        if "chosen" not in cols:
+            self._exec("ALTER TABLE vendors ADD COLUMN chosen INTEGER NOT NULL DEFAULT 0")
         self._conn.commit()
+
+    @staticmethod
+    def _vendor(row) -> Vendor:
+        id_, project_id, name, vendor_key, created_at, chosen = row
+        return Vendor(id=id_, project_id=project_id, name=name, vendor_key=vendor_key,
+                      created_at=created_at, chosen=bool(chosen))
 
     def _exec(self, sql: str, params: tuple = ()):
         cur = self._conn.execute(sql, params)
@@ -112,10 +123,10 @@ class Store:
     def find_vendor(self, project_id: int, name: str) -> Vendor | None:
         """A vendor in this project with the same name (case/space-insensitive), if any."""
         cur = self._exec(
-            "SELECT id, project_id, name, vendor_key, created_at FROM vendors "
+            "SELECT id, project_id, name, vendor_key, created_at, chosen FROM vendors "
             "WHERE project_id=? AND LOWER(TRIM(name))=LOWER(TRIM(?))", (project_id, name))
         row = cur.fetchone()
-        return Vendor(*row) if row else None
+        return Store._vendor(row) if row else None
 
     def add_vendor(self, project_id: int, name: str) -> Vendor:
         ts = self._clock()
@@ -139,16 +150,28 @@ class Store:
 
     def list_vendors(self, project_id: int) -> list[Vendor]:
         cur = self._exec(
-            "SELECT id, project_id, name, vendor_key, created_at FROM vendors "
+            "SELECT id, project_id, name, vendor_key, created_at, chosen FROM vendors "
             "WHERE project_id=? ORDER BY id", (project_id,))
-        return [Vendor(*row) for row in cur.fetchall()]
+        return [Store._vendor(r) for r in cur.fetchall()]
+
+    def list_all_vendors(self) -> list[Vendor]:
+        cur = self._exec(
+            "SELECT id, project_id, name, vendor_key, created_at, chosen FROM vendors ORDER BY id")
+        return [Store._vendor(r) for r in cur.fetchall()]
 
     def get_vendor(self, vendor_id: int) -> Vendor | None:
         cur = self._exec(
-            "SELECT id, project_id, name, vendor_key, created_at FROM vendors WHERE id=?",
+            "SELECT id, project_id, name, vendor_key, created_at, chosen FROM vendors WHERE id=?",
             (vendor_id,))
         row = cur.fetchone()
-        return Vendor(*row) if row else None
+        return Store._vendor(row) if row else None
+
+    def set_chosen(self, vendor_id: int, chosen: bool) -> Vendor | None:
+        if self.get_vendor(vendor_id) is None:
+            return None
+        self._exec("UPDATE vendors SET chosen=? WHERE id=?", (1 if chosen else 0, vendor_id))
+        self._conn.commit()
+        return self.get_vendor(vendor_id)
 
     def remove_vendor(self, vendor_id: int) -> None:
         row = self._exec(

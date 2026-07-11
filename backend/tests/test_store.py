@@ -233,3 +233,31 @@ def test_rename_vendor_updates_the_name_and_leaves_the_domain_keyed_cache_untouc
     assert renamed is not None and renamed.name == "Cives Steel"
     assert _cached_sections(tmp_path, "cives.com") != {}   # domain cache is untouched
     assert store.rename_vendor(9999, "x") is None
+
+
+def test_new_vendor_defaults_to_not_chosen(tmp_path):
+    from vendor_dd.surfaces.api.store import Store
+    store = Store(tmp_path / "db.sqlite")
+    p = store.create_project("p")
+    v = store.add_vendor(p.id, "Acme")
+    assert store.get_vendor(v.id).chosen is False
+
+
+def test_set_chosen_toggles_the_flag(tmp_path):
+    from vendor_dd.surfaces.api.store import Store
+    store = Store(tmp_path / "db.sqlite")
+    p = store.create_project("p")
+    v = store.add_vendor(p.id, "Acme")
+    store.set_chosen(v.id, True)
+    assert store.get_vendor(v.id).chosen is True
+    store.set_chosen(v.id, False)
+    assert store.get_vendor(v.id).chosen is False
+
+
+def test_list_all_vendors_spans_projects(tmp_path):
+    from vendor_dd.surfaces.api.store import Store
+    store = Store(tmp_path / "db.sqlite")
+    a = store.create_project("a"); b = store.create_project("b")
+    store.add_vendor(a.id, "Acme"); store.add_vendor(b.id, "Beta")
+    names = {v.name for v in store.list_all_vendors()}
+    assert names == {"Acme", "Beta"}
