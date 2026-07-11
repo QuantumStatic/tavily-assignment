@@ -278,6 +278,37 @@ def test_read_model_reports_section_completeness(tmp_path):
     assert report["sections_present"] == 2 and report["sections_expected"] == 6
 
 
+def test_report_shows_the_entity_even_when_the_snapshot_is_past_its_ttl(tmp_path):
+    """The sections shown in a report are read TTL-free (all_sections), so the entity
+    header must be too. Otherwise a report untouched past the 30-day snapshot TTL would
+    render its scores with a blank company header (entity=null)."""
+    from datetime import datetime, timezone
+
+    from vendor_dd.engine.cache import SQLiteCache
+    from vendor_dd.engine.schemas import Dimension, Section
+
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()["id"]
+    key = "cives.com"
+    client.app.state.store.set_vendor_key(vid, key)
+
+    # seed a section + entity snapshot stamped far in the past (older than every TTL)
+    stale = SQLiteCache(tmp_path / "db.sqlite",
+                        clock=lambda: datetime(2020, 1, 1, tzinfo=timezone.utc))
+    stale.put(key, Dimension.LEGAL,
+              Section(dimension=Dimension.LEGAL, findings=[], reasoning="x", score=6).model_dump(mode="json"))
+    stale.put(key, Dimension.SNAPSHOT,
+              EntityCard(name="Cives Steel", domain="cives.com", country="united states",
+                         industry="steel", is_public=False).model_dump(mode="json"))
+    stale.close()
+
+    report = client.get(f"/vendors/{vid}/report").json()
+    assert report["generated"] is True
+    assert report["entity"] is not None, "entity header blanked out by the snapshot TTL"
+    assert report["entity"]["domain"] == "cives.com"
+
+
 def test_add_vendor_lost_race_falls_back_to_the_existing_row(tmp_path, monkeypatch):
     """If the pre-insert duplicate check misses (concurrent add), the DB constraint
     rejects the insert and the route returns the winner's row instead of a 500."""
