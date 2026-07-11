@@ -299,12 +299,14 @@ class GatedLLM:
     def __init__(self):
         self.gate = threading.Event()
         self.entity_calls = 0
+        self.section_calls = 0
 
     def structured(self, prompt, schema):
         if schema is EntityCard:
             self.entity_calls += 1
             return EntityCard(name="Cives Steel", domain="cives.com", country="united states",
                               industry="steel", is_public=False)
+        self.section_calls += 1
         assert self.gate.wait(timeout=10), "test never opened the gate"
         return Section(dimension=Dimension.LEGAL, findings=[], reasoning="x", score=5)
 
@@ -359,6 +361,14 @@ def test_second_stream_for_the_same_vendor_tails_the_existing_run(tmp_path):
     assert not t1.is_alive() and not t2.is_alive()
 
     assert llm.entity_calls == 1                       # one generation, not two
+    # entity_calls alone doesn't prove single-flight: entity resolution is independently
+    # cache-guarded in _resolve_entity_cached, so it stays at 1 even if a second, fully
+    # independent generation ran. Section synthesis is NOT cache-guarded across concurrent
+    # runs the same way, so it's the real signal for double spend. One generation computes
+    # exactly one section per dimension: the five Tavily dims (LEGAL, SAFETY, FINANCIAL,
+    # CERTIFICATIONS, NEWS) plus BACKLOG, all uncached on a brand-new vendor -> 6 calls.
+    # If a second generation ran independently (the pre-fix bug), this would be ~12.
+    assert llm.section_calls == 6                      # one generation's worth, not two
     names2 = _event_names(result2["body"])
     assert names2[0] == "entity_resolved"              # history was replayed
     assert names2[-1] == "report_complete"
