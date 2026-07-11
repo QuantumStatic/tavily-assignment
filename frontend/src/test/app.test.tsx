@@ -233,20 +233,41 @@ test('switching the active project closes the previous project\'s open streams',
   await waitFor(() => expect(es.closed).toBe(true))
 })
 
-test('adding a duplicate vendor surfaces the API message and adds no row', async () => {
+test('adding an already-present vendor reuses the row and opens its report, no new stream', async () => {
+  const existingRow = {
+    vendor_id: 9, name: 'Cives Steel', vendor_key: 'cives-steel', generated: true,
+    sections_present: 6, sections_expected: 6,
+    verdict_score: 7, verdict_reasoning: 'Solid.',
+    dimensions: [{ dimension: 'legal', score: 8, as_of: '2026-06' }],
+  }
   mockApi({
+    projectDetails: { 1: { id: 1, name: 'Bridge job', created_at: 't', vendors: [existingRow] } },
+    vendorReports: {
+      9: { generated: true, vendor_key: 'cives-steel', entity: { name: 'Cives Steel' },
+          verdict_score: 7, verdict_reasoning: 'Solid.',
+          sections: [{ dimension: 'legal', score: 8, reasoning: 'clean', findings: [] }],
+          sections_present: 6, sections_expected: 6 },
+    },
     addVendor: async () => ({
-      ok: false, status: 409, json: async () => ({ detail: 'Vendor already added to this project' }),
+      ok: true, json: async () => ({
+        id: 9, project_id: 1, name: 'Cives Steel', vendor_key: 'cives-steel',
+        created_at: 't', existed: true,
+      }),
     }),
   })
   render(<App />)
 
   await screen.findByRole('heading', { name: 'Bridge job' })
+  await screen.findByText('Cives Steel')   // the row is already there before we "add" it
+
   await userEvent.type(screen.getByPlaceholderText('Vendor name…'), 'Cives Steel')
   await userEvent.click(screen.getByRole('button', { name: /add vendor/i }))
 
-  await screen.findByText(/already added to this project/i)
-  expect(screen.queryByText('Cives Steel')).not.toBeInTheDocument()   // no row added
+  // its existing report opens — no error, no new row, no new EventSource
+  await screen.findByText('Solid.')
+  expect(screen.getAllByText('Cives Steel').length).toBeGreaterThan(0)
+  expect(document.querySelector('.error-banner')).toBeNull()
+  expect(FakeEventSource.last()).toBeUndefined()
 })
 
 test('a successful vendor deletion closes its stream and removes the row', async () => {
