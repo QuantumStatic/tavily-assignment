@@ -20,6 +20,7 @@ export interface ProjectDetail {
 
 export interface VendorOut {
   id: number; project_id: number; name: string; vendor_key: string | null; created_at: string
+  existed: boolean   // true when this name was already in the project — same row, no new research
 }
 
 export interface Citation {

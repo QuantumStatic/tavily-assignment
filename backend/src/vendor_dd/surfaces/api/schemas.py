@@ -25,6 +25,7 @@ class VendorOut(BaseModel):
     name: str
     vendor_key: str | None = None
     created_at: str
+    existed: bool = False   # True when POST /vendors returned an already-present row
 
 
 class DimensionScore(BaseModel):

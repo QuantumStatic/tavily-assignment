@@ -104,6 +104,11 @@ export default function App() {
     try {
       const v = await api.addVendor(forProject, name)
       if (activeIdRef.current !== forProject) return   // user switched projects while this was in flight
+      if (v.existed) {
+        // already in this project — same row, no new research. Just open its report.
+        selectVendor(v.id)
+        return
+      }
       const row = startStreaming(rowFromSummary({
         vendor_id: v.id, name: v.name, vendor_key: v.vendor_key,
         generated: false, sections_present: 0, sections_expected: DIMENSIONS.length,

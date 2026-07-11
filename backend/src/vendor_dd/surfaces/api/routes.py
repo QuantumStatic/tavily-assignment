@@ -88,11 +88,16 @@ def add_vendor(project_id: int, body: VendorIn, request: Request):
     store = _store(request)
     if store.get_project(project_id) is None:
         raise HTTPException(status_code=404, detail="project not found")
-    if store.find_vendor(project_id, body.name) is not None:
-        raise HTTPException(status_code=409, detail="Vendor already added to this project")
+    # Idempotent add: the same vendor name in this project returns the existing row
+    # (no duplicate, no re-triggered research) instead of erroring or inserting again.
+    existing = store.find_vendor(project_id, body.name)
+    if existing is not None:
+        return VendorOut(id=existing.id, project_id=existing.project_id, name=existing.name,
+                         vendor_key=existing.vendor_key, created_at=existing.created_at,
+                         existed=True)
     v = store.add_vendor(project_id, body.name)
     return VendorOut(id=v.id, project_id=v.project_id, name=v.name,
-                     vendor_key=v.vendor_key, created_at=v.created_at)
+                     vendor_key=v.vendor_key, created_at=v.created_at, existed=False)
 
 
 @router.delete("/vendors/{vendor_id}")

@@ -79,20 +79,25 @@ def test_delete_missing_vendor_returns_404(tmp_path):
     assert client.delete("/vendors/9999").status_code == 404
 
 
-def test_adding_a_duplicate_vendor_is_rejected_no_second_row(tmp_path):
+def test_adding_a_duplicate_vendor_returns_the_existing_row_no_second_insert(tmp_path):
     client = _client(tmp_path)
     pid = client.post("/projects", json={"name": "p"}).json()["id"]
-    assert client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).status_code == 200
+    first = client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"}).json()
+    assert first["existed"] is False
 
     dup = client.post(f"/projects/{pid}/vendors", json={"name": "  cives steel "})  # case/space variant
-    assert dup.status_code == 409
-    assert "already" in dup.json()["detail"].lower()
+    assert dup.status_code == 200
+    body = dup.json()
+    assert body["existed"] is True
+    assert body["id"] == first["id"]                 # same row, not a new one
     # still exactly one row
     assert len(client.get(f"/projects/{pid}").json()["vendors"]) == 1
 
-    # the same name in a DIFFERENT project is allowed
+    # the same name in a DIFFERENT project is allowed (a genuinely new row there)
     pid2 = client.post("/projects", json={"name": "p2"}).json()["id"]
-    assert client.post(f"/projects/{pid2}/vendors", json={"name": "Cives Steel"}).status_code == 200
+    other = client.post(f"/projects/{pid2}/vendors", json={"name": "Cives Steel"}).json()
+    assert other["existed"] is False
+    assert other["id"] != first["id"]
 
 
 def _event_names(raw: str) -> list[str]:
