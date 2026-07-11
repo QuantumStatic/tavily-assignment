@@ -69,6 +69,12 @@ class Store:
                  FOREIGN KEY (project_id) REFERENCES projects(id)
                )"""
         )
+        # One row per (project, name) — normalized the same way find_vendor matches.
+        # Enforced in the DB so a concurrent double-add can't slip past the
+        # check-then-insert in the route.
+        self._exec(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_vendors_project_name "
+            "ON vendors(project_id, LOWER(TRIM(name)))")
         self._conn.commit()
 
     def _exec(self, sql: str, params: tuple = ()):
