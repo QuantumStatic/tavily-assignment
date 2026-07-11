@@ -63,6 +63,7 @@ class Store:
                  name TEXT NOT NULL,
                  vendor_key TEXT,
                  created_at TEXT NOT NULL,
+                 chosen INTEGER NOT NULL DEFAULT 0,
                  FOREIGN KEY (project_id) REFERENCES projects(id)
                )"""
         )
@@ -72,10 +73,6 @@ class Store:
         self._exec(
             "CREATE UNIQUE INDEX IF NOT EXISTS ux_vendors_project_name "
             "ON vendors(project_id, LOWER(TRIM(name)))")
-        # `chosen` marks a vendor the user actually hired — powers cross-project trust stats.
-        cols = [r[1] for r in self._conn.execute("PRAGMA table_info(vendors)").fetchall()]
-        if "chosen" not in cols:
-            self._exec("ALTER TABLE vendors ADD COLUMN chosen INTEGER NOT NULL DEFAULT 0")
         self._conn.commit()
 
     @staticmethod

@@ -261,3 +261,12 @@ def test_list_all_vendors_spans_projects(tmp_path):
     store.add_vendor(a.id, "Acme"); store.add_vendor(b.id, "Beta")
     names = {v.name for v in store.list_all_vendors()}
     assert names == {"Acme", "Beta"}
+
+
+def test_reopening_store_on_existing_db_does_not_crash(tmp_path):
+    from vendor_dd.surfaces.api.store import Store
+    path = tmp_path / "db.sqlite"
+    Store(path)          # first open: creates the schema
+    store2 = Store(path)  # second open: schema already exists, must not error
+    p = store2.create_project("p")
+    assert p.id is not None
