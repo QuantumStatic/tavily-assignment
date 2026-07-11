@@ -182,16 +182,6 @@ def _cached_sections(tmp_path, key: str):
     return rows
 
 
-def _seed_cache_with_reasoning(tmp_path, key: str, reasoning: str):
-    from vendor_dd.engine.cache import SQLiteCache
-    from vendor_dd.engine.schemas import Dimension, Section
-
-    cache = SQLiteCache(tmp_path / "db.sqlite")
-    cache.put(key, Dimension.LEGAL,
-              Section(dimension=Dimension.LEGAL, findings=[], reasoning=reasoning, score=5).model_dump(mode="json"))
-    cache.close()
-
-
 def test_evict_unreferenced_clears_cache_when_no_vendor_row_references_it(tmp_path):
     store = _store(tmp_path)
     _seed_cache(tmp_path, "cives.com")
@@ -230,60 +220,16 @@ def test_remove_project_cascades_vendors_and_evicts_unreferenced_cache(tmp_path)
     assert _cached_sections(tmp_path, "cives.com") == {}   # last reference gone -> evicted
 
 
-def test_rename_vendor_updates_the_name_and_migrates_the_snapshot_cache_key(tmp_path):
+def test_rename_vendor_updates_the_name_and_leaves_the_domain_keyed_cache_untouched(tmp_path):
+    # All research (sections + entity snapshot) is keyed by the resolved DOMAIN, which a
+    # rename never changes — so a rename is a pure name update with no cache migration.
     store = _store(tmp_path)
     p = store.create_project("p")
     v = store.add_vendor(p.id, "Cives Stel")           # typo
     store.set_vendor_key(v.id, "cives.com")
-    _seed_cache(tmp_path, "cives stel")                 # snapshot lives under the NAME key
-    _seed_cache(tmp_path, "cives.com")                  # sections live under the domain key
+    _seed_cache(tmp_path, "cives.com")                  # everything lives under the domain key
 
     renamed = store.rename_vendor(v.id, "Cives Steel")
     assert renamed is not None and renamed.name == "Cives Steel"
-    assert _cached_sections(tmp_path, "cives stel") == {}          # old name key gone
-    assert _cached_sections(tmp_path, "cives steel") != {}         # moved to the new name
-    assert _cached_sections(tmp_path, "cives.com") != {}           # domain sections untouched
+    assert _cached_sections(tmp_path, "cives.com") != {}   # domain cache is untouched
     assert store.rename_vendor(9999, "x") is None
-
-
-def test_rename_vendor_does_not_clobber_preexisting_cache_data_at_the_new_key(tmp_path):
-    # report_cache is shared by NAME across projects. If some other vendor (in a
-    # different project) already has a valid, correctly-fetched snapshot cached under
-    # the target name, renaming a vendor into that name must not destroy it.
-    store = _store(tmp_path)
-    p = store.create_project("p")
-    v = store.add_vendor(p.id, "Cives Stel")           # typo
-    store.set_vendor_key(v.id, "cives.com")
-
-    _seed_cache_with_reasoning(tmp_path, "cives stel", "data being renamed away")
-    _seed_cache_with_reasoning(tmp_path, "cives steel", "original target data")
-
-    renamed = store.rename_vendor(v.id, "Cives Steel")
-    assert renamed is not None and renamed.name == "Cives Steel"
-
-    sections = _cached_sections(tmp_path, "cives steel")
-    assert sections != {}
-    from vendor_dd.engine.schemas import Dimension
-    content, _ = sections[Dimension.LEGAL]
-    assert content["reasoning"] == "original target data"
-
-    assert _cached_sections(tmp_path, "cives stel") == {}          # old key cleared out
-
-
-def test_rename_vendor_keeps_the_snapshot_for_another_vendor_still_using_the_old_name(tmp_path):
-    # report_cache is shared by NAME across projects, so two vendors in different
-    # projects can share one snapshot key. Renaming ONE of them must not migrate (and
-    # thus steal/orphan) the shared snapshot the OTHER vendor still relies on.
-    store = _store(tmp_path)
-    p1 = store.create_project("p1")
-    p2 = store.create_project("p2")
-    a = store.add_vendor(p1.id, "Cives Steel")
-    store.add_vendor(p2.id, "Cives Steel")             # same name, different project
-    _seed_cache(tmp_path, "cives steel")               # the shared snapshot, keyed by name
-
-    store.rename_vendor(a.id, "Cives Steel Co")
-
-    # the other vendor still uses "Cives Steel", so its snapshot must stay put ...
-    assert _cached_sections(tmp_path, "cives steel") != {}
-    # ... and must NOT have been migrated onto the renamed vendor's new name key
-    assert _cached_sections(tmp_path, "cives steel co") == {}
