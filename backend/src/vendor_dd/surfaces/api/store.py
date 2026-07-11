@@ -147,9 +147,19 @@ class Store:
             still_referenced = self._exec(
                 "SELECT 1 FROM vendors WHERE LOWER(TRIM(name))=? LIMIT 1", (old_key,)).fetchone()
             if not still_referenced:
-                # OR REPLACE: if the new name key somehow already has rows, take theirs over
-                self._exec("UPDATE OR REPLACE report_cache SET vendor_key=? WHERE vendor_key=?",
-                           (new_key, old_key))
+                # report_cache is shared by name across projects, so some other vendor
+                # may already have valid data cached at new_key. INSERT OR IGNORE only
+                # copies over section_types that new_key doesn't already have, so any
+                # pre-existing data at new_key always wins and is never overwritten;
+                # the old vendor's stale rows for those section_types are simply
+                # dropped once old_key is cleared out below.
+                self._exec(
+                    "INSERT OR IGNORE INTO report_cache "
+                    "(vendor_key, section_type, content, sources, fetched_at) "
+                    "SELECT ?, section_type, content, sources, fetched_at "
+                    "FROM report_cache WHERE vendor_key=?",
+                    (new_key, old_key))
+                self._exec("DELETE FROM report_cache WHERE vendor_key=?", (old_key,))
         self._conn.commit()
         return self.get_vendor(vendor_id)
 

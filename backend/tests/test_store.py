@@ -208,6 +208,16 @@ def _cached_sections(tmp_path, key: str):
     return rows
 
 
+def _seed_cache_with_reasoning(tmp_path, key: str, reasoning: str):
+    from vendor_dd.engine.cache import SQLiteCache
+    from vendor_dd.engine.schemas import Dimension, Section
+
+    cache = SQLiteCache(tmp_path / "db.sqlite")
+    cache.put(key, Dimension.LEGAL,
+              Section(dimension=Dimension.LEGAL, findings=[], reasoning=reasoning, score=5).model_dump(mode="json"))
+    cache.close()
+
+
 def test_evict_unreferenced_clears_cache_when_no_vendor_row_references_it(tmp_path):
     store = _store(tmp_path)
     _seed_cache(tmp_path, "cives.com")
@@ -260,3 +270,27 @@ def test_rename_vendor_updates_the_name_and_migrates_the_snapshot_cache_key(tmp_
     assert _cached_sections(tmp_path, "cives steel") != {}         # moved to the new name
     assert _cached_sections(tmp_path, "cives.com") != {}           # domain sections untouched
     assert store.rename_vendor(9999, "x") is None
+
+
+def test_rename_vendor_does_not_clobber_preexisting_cache_data_at_the_new_key(tmp_path):
+    # report_cache is shared by NAME across projects. If some other vendor (in a
+    # different project) already has a valid, correctly-fetched snapshot cached under
+    # the target name, renaming a vendor into that name must not destroy it.
+    store = _store(tmp_path)
+    p = store.create_project("p")
+    v = store.add_vendor(p.id, "Cives Stel")           # typo
+    store.set_vendor_key(v.id, "cives.com")
+
+    _seed_cache_with_reasoning(tmp_path, "cives stel", "data being renamed away")
+    _seed_cache_with_reasoning(tmp_path, "cives steel", "original target data")
+
+    renamed = store.rename_vendor(v.id, "Cives Steel")
+    assert renamed is not None and renamed.name == "Cives Steel"
+
+    sections = _cached_sections(tmp_path, "cives steel")
+    assert sections != {}
+    from vendor_dd.engine.schemas import Dimension
+    content, _ = sections[Dimension.LEGAL]
+    assert content["reasoning"] == "original target data"
+
+    assert _cached_sections(tmp_path, "cives stel") == {}          # old key cleared out
