@@ -130,32 +130,6 @@ def test_session_id_defaults_to_uuid_when_no_id_gen(tmp_path):
     int(a.session_id, 16)                           # valid hex
 
 
-def test_migrates_pre_session_id_database(tmp_path):
-    import sqlite3
-    path = tmp_path / "legacy.db"
-    conn = sqlite3.connect(str(path))
-    conn.execute(
-        """CREATE TABLE projects (
-             id INTEGER PRIMARY KEY AUTOINCREMENT,
-             name TEXT NOT NULL,
-             created_at TEXT NOT NULL
-           )"""
-    )
-    conn.execute("INSERT INTO projects (name, created_at) VALUES (?,?)", ("Old Project", "t"))
-    conn.commit()
-    conn.close()
-
-    store = Store(path)  # should migrate in __init__ without crashing
-    projects = store.list_projects()
-    assert len(projects) == 1
-    assert projects[0].name == "Old Project"
-    assert projects[0].session_id is None   # pre-existing row has no session_id
-
-    # new projects on the migrated DB get a real session_id
-    p = store.create_project("New Project")
-    assert p.session_id is not None
-
-
 def test_store_logs_sql_queries(tmp_path):
     import json
     from vendor_dd.logs import configure_logging

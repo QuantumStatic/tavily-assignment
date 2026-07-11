@@ -55,10 +55,6 @@ class Store:
                  session_id TEXT
                )"""
         )
-        # Migrate a DB created before session_id existed (Phase 2). No-op on fresh DBs.
-        cols = {row[1] for row in self._exec("PRAGMA table_info(projects)").fetchall()}
-        if "session_id" not in cols:
-            self._exec("ALTER TABLE projects ADD COLUMN session_id TEXT")
         self._exec(
             """CREATE TABLE IF NOT EXISTS vendors (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
