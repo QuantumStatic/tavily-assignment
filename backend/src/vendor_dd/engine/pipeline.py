@@ -100,6 +100,11 @@ class ReportEngine:
             yield EntityResolved(entity=entity)
 
             vendor_key = (entity.domain or entity.name).strip().lower()
+            # Cache the entity snapshot under the DOMAIN key (not just the name key that
+            # _resolve_entity_cached uses for resolution-skip). The read model reads it by
+            # vendor_key, which is stable across a rename — so a rename landing mid-generation
+            # can't orphan the snapshot under a name nobody looks up anymore.
+            cache.put(vendor_key, Dimension.SNAPSHOT, entity.model_dump(mode="json"))
             sections: list[Section] = []
             news_results: list[dict] | None = None
 
