@@ -10,8 +10,9 @@ from sse_starlette.sse import EventSourceResponse
 from vendor_dd.engine.cache import SQLiteCache
 from vendor_dd.engine.events import EntityResolved
 from vendor_dd.engine.pipeline import ReportEngine
-from vendor_dd.engine.schemas import Dimension, EntityCard, Section
+from vendor_dd.engine.schemas import Dimension, EntityCard, Section, SourceType
 from vendor_dd.engine.synthesis import assemble_verdict
+from vendor_dd.surfaces.api.dashboard import DashboardStats, VendorRow, compute_dashboard
 from vendor_dd.surfaces.api.runs import DONE, RunRegistry
 from vendor_dd.surfaces.api.schemas import (
     ChosenIn, DimensionScore, ProjectDetail, ProjectIn, ProjectOut, VendorIn, VendorOut,
@@ -68,6 +69,28 @@ def _clean_name(raw: str) -> str:
     if not name:
         raise HTTPException(status_code=422, detail="name must not be blank")
     return name
+
+
+def _parse_project_ids(projects: str | None) -> set[int] | None:
+    """None -> all projects. Else the set of valid ints; unknown ids filtered later.
+    Raises 422 on non-integer tokens."""
+    if projects is None or projects.strip() == "":
+        return None
+    try:
+        return {int(tok) for tok in projects.split(",") if tok.strip() != ""}
+    except ValueError:
+        raise HTTPException(status_code=422, detail="projects must be comma-separated integers")
+
+
+def _count_sources(sections: dict) -> tuple[int, int]:
+    independent = self_reported = 0
+    for sec, _ in sections.values():
+        for f in sec.findings:
+            if f.citation.source_type is SourceType.INDEPENDENT:
+                independent += 1
+            else:
+                self_reported += 1
+    return independent, self_reported
 
 
 @router.post("/projects", response_model=ProjectOut)
@@ -176,6 +199,63 @@ def set_chosen(vendor_id: int, body: ChosenIn, request: Request):
     if v is None:
         raise HTTPException(status_code=404, detail="vendor not found")
     return _vendor_out(v, existed=True)
+
+
+@router.get("/stats", response_model=DashboardStats)
+def get_stats(request: Request, projects: str | None = None):
+    store = _store(request)
+    history = request.app.state.history
+
+    wanted = _parse_project_ids(projects)
+    all_projects = store.list_projects()
+    projects_total = len(all_projects)
+    valid_ids = {p.id for p in all_projects}
+    selected_ids = valid_ids if wanted is None else (wanted & valid_ids)
+    name_by_id = {p.id: p.name for p in all_projects}
+
+    cache = _cache(request)
+    try:
+        rows: list[VendorRow] = []
+        independent = self_reported = 0
+        previous_verdict: dict[str, int] = {}
+        for v in store.list_all_vendors():
+            if v.project_id not in selected_ids:
+                continue
+            dims: dict[str, int] = {}
+            verdict: int | None = None
+            if v.vendor_key:
+                parsed, _snap = _report_sections(cache, v.vendor_key)
+                if parsed:
+                    dims = {d.value: sec.score for d, (sec, _ts) in parsed.items()}
+                    score, _reasoning = assemble_verdict([sec for sec, _ in parsed.values()])
+                    verdict = score
+                    ind, self_r = _count_sources(parsed)
+                    independent += ind
+                    self_reported += self_r
+                    prev = history.previous(v.vendor_key, "verdict")
+                    if prev is not None:
+                        previous_verdict[v.vendor_key] = prev[0]
+            rows.append(VendorRow(
+                vendor_id=v.id, name=v.name, project_id=v.project_id,
+                project_name=name_by_id.get(v.project_id, ""), vendor_key=v.vendor_key,
+                chosen=v.chosen, verdict=verdict, dims=dims))
+
+        # trust counts span ALL projects, by domain
+        chosen_counts: dict[str, int] = {}
+        project_counts: dict[str, int] = {}
+        for v in store.list_all_vendors():
+            if not v.vendor_key:
+                continue
+            project_counts[v.vendor_key] = project_counts.get(v.vendor_key, 0) + 1
+            if v.chosen:
+                chosen_counts[v.vendor_key] = chosen_counts.get(v.vendor_key, 0) + 1
+    finally:
+        cache.close()
+
+    return compute_dashboard(
+        rows, previous_verdict, chosen_counts, project_counts,
+        projects_total=projects_total, projects_selected=len(selected_ids),
+        independent_sources=independent, self_reported_sources=self_reported)
 
 
 @router.get("/vendors/{vendor_id}/report", response_model=VendorReport)

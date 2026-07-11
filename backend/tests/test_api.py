@@ -628,3 +628,51 @@ def test_chosen_patch_round_trip(tmp_path):
 def test_chosen_patch_unknown_vendor_404(tmp_path):
     client = _client(tmp_path)
     assert client.patch("/vendors/9999/chosen", json={"chosen": True}).status_code == 404
+
+
+def _generate(client, pid, name):
+    """Add a vendor and drive its stream to completion so a report is cached."""
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": name}).json()["id"]
+    with client.stream("GET", f"/vendors/{vid}/report/stream") as r:
+        for _ in r.iter_lines():
+            pass
+    return vid
+
+
+def test_stats_empty_when_no_projects(tmp_path):
+    client = _client(tmp_path)
+    d = client.get("/stats").json()
+    assert d["vendors_total"] == 0 and d["avg_verdict"] is None
+
+
+def test_stats_counts_generated_vendor(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    _generate(client, pid, "Cives Steel")
+    d = client.get("/stats").json()
+    assert d["vendors_total"] == 1 and d["vendors_generated"] == 1
+    assert d["avg_verdict"] is not None
+    assert len(d["verdict_histogram"]) == 11
+
+
+def test_stats_filters_by_projects_param(tmp_path):
+    client = _client(tmp_path)
+    a = client.post("/projects", json={"name": "a"}).json()["id"]
+    b = client.post("/projects", json={"name": "b"}).json()["id"]
+    _generate(client, a, "Cives Steel")
+    _generate(client, b, "Other Vendor")
+    only_a = client.get(f"/stats?projects={a}").json()
+    assert only_a["vendors_total"] == 1 and only_a["projects_selected"] == 1
+
+
+def test_stats_unknown_project_ids_ignored(tmp_path):
+    client = _client(tmp_path)
+    a = client.post("/projects", json={"name": "a"}).json()["id"]
+    _generate(client, a, "Cives Steel")
+    d = client.get(f"/stats?projects={a},9999").json()
+    assert d["vendors_total"] == 1   # 9999 silently dropped
+
+
+def test_stats_malformed_projects_param_422(tmp_path):
+    client = _client(tmp_path)
+    assert client.get("/stats?projects=abc").status_code == 422
