@@ -16,6 +16,7 @@ function renderSidebar(props: Partial<Parameters<typeof Sidebar>[0]> = {}) {
       onSelect={props.onSelect ?? (() => {})}
       onCreate={props.onCreate ?? (() => {})}
       onDelete={props.onDelete ?? (() => {})}
+      onOverview={props.onOverview ?? (() => {})}
     />,
   )
 }
@@ -86,4 +87,16 @@ test('clicking the delete button calls onDelete without triggering onSelect', as
   await userEvent.click(screen.getByRole('button', { name: /delete project hvac q3/i }))
   expect(onDelete).toHaveBeenCalledWith(2)
   expect(onSelect).not.toHaveBeenCalled()
+})
+
+test('shows an Overview entry that is active when no project is selected', async () => {
+  const onOverview = vi.fn()
+  render(
+    <Sidebar projects={projects} activeId={null} onSelect={() => {}} onCreate={() => {}}
+             onDelete={() => {}} onOverview={onOverview} />,
+  )
+  const overview = screen.getByRole('button', { name: /overview/i })
+  expect(overview).toHaveClass('active')
+  await userEvent.click(overview)
+  expect(onOverview).toHaveBeenCalled()
 })

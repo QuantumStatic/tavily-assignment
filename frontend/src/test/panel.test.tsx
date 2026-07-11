@@ -5,7 +5,7 @@ import { ReportPanel } from '../components/ReportPanel'
 import type { RowState } from '../rows'
 
 const row: RowState = {
-  vendorId: 1, name: 'Cives', vendorKey: 'cives.com',
+  vendorId: 1, name: 'Cives', vendorKey: 'cives.com', chosen: false,
   cells: {}, verdict: { score: 7 }, status: 'done',
   entity: { name: 'Cives Steel', domain: 'cives.com', country: 'us', industry: 'steel',
             parent: null, is_public: false, ticker: null, exchange: null },

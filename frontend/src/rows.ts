@@ -16,6 +16,10 @@ export interface RowState {
   sectionsPresent?: number
   sectionsExpected?: number
   duplicateOf?: string | null
+  chosen: boolean
+  chosenCount?: number
+  projectsCount?: number
+  deltas?: Record<string, { score: number; recorded_on: string } | null>
 }
 
 const cellsWith = (value: CellState): Record<string, CellState> =>
@@ -35,6 +39,7 @@ export function rowFromSummary(v: VendorSummary): RowState {
     cells: cellsWith('idle'), verdict: 'idle', status: 'idle',
     sectionsPresent: v.sections_present, sectionsExpected: v.sections_expected,
     duplicateOf: v.duplicate_of ?? null,
+    chosen: v.chosen ?? false,
   }
   if (!v.generated) return base
   const cells = cellsWith('failed')
@@ -93,5 +98,8 @@ export function rowFromReport(row: RowState, r: VendorReport): RowState {
     } : undefined,
     sectionsPresent: r.sections_present,
     sectionsExpected: r.sections_expected,
+    chosenCount: r.chosen_count ?? row.chosenCount,
+    projectsCount: r.projects_count ?? row.projectsCount,
+    deltas: r.dimension_deltas ?? row.deltas,
   }
 }
