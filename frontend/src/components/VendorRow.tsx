@@ -107,6 +107,7 @@ export function VendorRow({
         >
           {row.chosen ? '★' : '☆'}
         </button>
+        <span className="action-divider" aria-hidden="true" />
         <button
           className="delete-btn"
           aria-label="Delete vendor"
