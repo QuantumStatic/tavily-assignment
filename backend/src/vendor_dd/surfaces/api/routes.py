@@ -55,9 +55,16 @@ def _summarize(vendor: Vendor, cache: SQLiteCache) -> VendorSummary:
                          dimensions=dims, sections_present=len(parsed), sections_expected=EXPECTED_SECTIONS)
 
 
+def _clean_name(raw: str) -> str:
+    name = raw.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name must not be blank")
+    return name
+
+
 @router.post("/projects", response_model=ProjectOut)
 def create_project(body: ProjectIn, request: Request):
-    p = _store(request).create_project(body.name)
+    p = _store(request).create_project(_clean_name(body.name))
     return ProjectOut(id=p.id, name=p.name, created_at=p.created_at)
 
 
@@ -92,16 +99,17 @@ def add_vendor(project_id: int, body: VendorIn, request: Request):
     store = _store(request)
     if store.get_project(project_id) is None:
         raise HTTPException(status_code=404, detail="project not found")
+    name = _clean_name(body.name)
     # Idempotent add: the same vendor name in this project returns the existing row
     # (no duplicate, no re-triggered research) instead of erroring or inserting again.
-    existing = store.find_vendor(project_id, body.name)
+    existing = store.find_vendor(project_id, name)
     if existing is not None:
         return _vendor_out(existing, existed=True)
     try:
-        v = store.add_vendor(project_id, body.name)
+        v = store.add_vendor(project_id, name)
     except sqlite3.IntegrityError:
         # lost a race with a concurrent identical add — return the winner's row
-        winner = store.find_vendor(project_id, body.name)
+        winner = store.find_vendor(project_id, name)
         if winner is None:   # can't happen: the constraint that fired proves the row exists
             raise HTTPException(status_code=409, detail="vendor already added")
         return _vendor_out(winner, existed=True)
