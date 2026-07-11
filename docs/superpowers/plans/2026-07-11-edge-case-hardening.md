@@ -57,15 +57,10 @@ In `backend/src/vendor_dd/surfaces/api/store.py`, immediately after the `CREATE 
 ```python
         # One row per (project, name) — normalized the same way find_vendor matches.
         # Enforced in the DB so a concurrent double-add can't slip past the
-        # check-then-insert in the route. An old DB that already holds duplicates
-        # would make index creation fail; keep serving in that case (the route-level
-        # check still guards all new adds).
-        try:
-            self._exec(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_vendors_project_name "
-                "ON vendors(project_id, LOWER(TRIM(name)))")
-        except sqlite3.IntegrityError:
-            pass
+        # check-then-insert in the route.
+        self._exec(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_vendors_project_name "
+            "ON vendors(project_id, LOWER(TRIM(name)))")
 ```
 
 - [ ] **Step 4: Run store tests**
@@ -1739,17 +1734,18 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 Run: `cd backend && .venv/bin/python -m pytest tests/ -q` then `cd frontend && npx tsc -b && npx vitest run`
 Expected: all PASS
 
-- [ ] **Step 2: Restart the backend without erasing the cache**
+- [ ] **Step 2: Wipe the dev DB and restart the backend**
+
+The dev DB predates the unique index (it may hold duplicate names) — wipe it rather than migrate; everything in it is re-derivable research cache.
 
 ```bash
 kill -9 $(lsof -ti :8000) 2>/dev/null; sleep 2
-cd backend && nohup .venv/bin/python -m uvicorn vendor_dd.surfaces.api.app:build_app --factory --host 127.0.0.1 --port 8000 > /tmp/vendor-dd-backend.log 2>&1 & disown
+cd backend && rm -f .vendor_dd_cache.db .vendor_dd_cache.db-wal .vendor_dd_cache.db-shm
+nohup .venv/bin/python -m uvicorn vendor_dd.surfaces.api.app:build_app --factory --host 127.0.0.1 --port 8000 > /tmp/vendor-dd-backend.log 2>&1 & disown
 sleep 4 && lsof -ti :8000
 ```
 
-Expected: a new pid listening on 8000. Do NOT delete `.vendor_dd_cache.db`.
-
-Note: the existing dev DB may already contain duplicate vendor names from before Task 1 — the index migration tolerates that (it catches `IntegrityError` and keeps serving). If you want the constraint active on the dev DB, dedupe the rows manually first.
+Expected: a new pid listening on 8000 with a fresh, empty DB (projects/vendors must be re-created).
 
 - [ ] **Step 3: Smoke-check in the browser**
 
