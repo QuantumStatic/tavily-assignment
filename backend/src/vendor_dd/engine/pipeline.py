@@ -10,6 +10,7 @@ from typing import Callable, Iterator, Literal
 
 from vendor_dd.engine.backlog import build_quote_url
 from vendor_dd.engine.cache import SQLiteCache
+from vendor_dd.engine.history import ScoreHistory
 from vendor_dd.engine.locks import KeyedLocks
 from vendor_dd.engine.entity import resolve_entity
 from vendor_dd.engine.events import (
@@ -74,7 +75,8 @@ class ReportEngine:
 
     def __init__(self, deps: Deps, *, mode: Literal["parallel", "sequential"] = "parallel",
                  max_workers: int = 6, session_id: str | None = None,
-                 domain_locks: KeyedLocks | None = None):
+                 domain_locks: KeyedLocks | None = None,
+                 history: ScoreHistory | None = None):
         self._deps = deps
         self._max_workers = 1 if mode == "sequential" else max_workers
         self._search: SearchClient = (
@@ -83,9 +85,21 @@ class ReportEngine:
         # vendors sharing a domain don't both pay for the Tavily/LLM pass. Absent (CLI,
         # unit tests) it's a no-op and generation runs unserialized.
         self._domain_locks = domain_locks
+        self._history = history
 
     def _domain_guard(self, vendor_key: str):
         return self._domain_locks.acquire(vendor_key) if self._domain_locks else contextlib.nullcontext()
+
+    def _record_score(self, vendor_key: str, dimension: str, score: int) -> None:
+        """Best-effort: history is institutional memory, not the product. A failed write
+        must never fail generation."""
+        if self._history is None:
+            return
+        try:
+            self._history.record(vendor_key, dimension, score)
+        except Exception as exc:   # noqa: BLE001 - deliberately swallow
+            _LOG.error("history.error", extra={"payload": {
+                "vendor_key": vendor_key, "dimension": dimension, "error": str(exc)}})
 
     def run_report(self, vendor: str) -> Report:
         report: Report | None = None
@@ -144,6 +158,7 @@ class ReportEngine:
                             continue
                         cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
                                   sources=outcome.raw_results)
+                        self._record_score(vendor_key, dim.value, outcome.section.score)
                         if dim is Dimension.NEWS:
                             news_results = outcome.raw_results
                         sections.append(outcome.section)
@@ -157,12 +172,15 @@ class ReportEngine:
                     yield ReportError(message="report could not be generated")
                     return
                 sections.append(backlog)
+                if not backlog_cached:
+                    self._record_score(vendor_key, Dimension.BACKLOG.value, backlog.score)
                 yield SectionComplete(section=backlog, cached=backlog_cached)
 
             try:
                 score, reasoning = assemble_verdict(sections)
                 report = Report(vendor_input=vendor, entity=entity, sections=sections,
                                 verdict_score=score, verdict_reasoning=reasoning)
+                self._record_score(vendor_key, "verdict", score)
             except Exception as exc:  # fatal: no report without a verdict
                 _LOG.error("report.error", extra={"payload": {"stage": "verdict", "error": str(exc)}})
                 yield ReportError(message="report could not be generated")
