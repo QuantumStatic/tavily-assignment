@@ -32,6 +32,9 @@ def create_app(deps: Deps, *, cors_origins: list[str] | None = None) -> FastAPI:
     from vendor_dd.surfaces.api.runs import RunRegistry
     app.state.runs = RunRegistry()
 
+    from vendor_dd.engine.locks import KeyedLocks
+    app.state.domain_locks = KeyedLocks()   # single-flight generation by resolved domain
+
     app.include_router(router)
     return app
 

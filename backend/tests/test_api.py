@@ -469,3 +469,111 @@ def test_project_detail_flags_domain_level_duplicates(tmp_path):
     vendors = client.get(f"/projects/{pid}").json()["vendors"]
     assert vendors[0]["duplicate_of"] is None
     assert vendors[1]["duplicate_of"] == "Voith"   # points at the earlier (canonical) row
+
+
+def test_rename_mid_generation_does_not_orphan_the_entity_snapshot(tmp_path):
+    """Fix 2: the entity snapshot is keyed by DOMAIN (stable across renames), not by the
+    vendor's name. A rename that lands WHILE generation is still resolving the entity used
+    to leave the snapshot written under the old name while the read model looked it up under
+    the new name -> entity showed null. Domain-keying closes that window."""
+    gate = threading.Event()
+    entered = threading.Event()
+
+    class GatedEntityLLM:
+        """Blocks inside entity resolution until the test opens the gate, so the test can
+        rename the vendor before the snapshot is written."""
+
+        def structured(self, prompt, schema):
+            if schema is EntityCard:
+                entered.set()
+                assert gate.wait(timeout=10), "gate never opened"
+                return EntityCard(name="Voith", domain="voith.com", country="germany",
+                                  industry="hydro", is_public=False)
+            return Section(dimension=Dimension.LEGAL, findings=[], reasoning="x", score=5)
+
+    deps = Deps(search=FakeSearch(), llm=GatedEntityLLM(), cache_path=tmp_path / "db.sqlite",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    client = TestClient(create_app(deps))
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = client.post(f"/projects/{pid}/vendors", json={"name": "Voith"}).json()["id"]
+
+    def read_stream():
+        with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+            for _ in resp.iter_lines():
+                pass
+
+    t = threading.Thread(target=read_stream, daemon=True)
+    t.start()
+    assert entered.wait(timeout=5), "generation never reached entity resolution"
+
+    # rename BEFORE the snapshot is written (generation is blocked in resolution)
+    assert client.patch(f"/vendors/{vid}", json={"name": "Voith SE"}).status_code == 200
+    gate.set()
+    t.join(timeout=10)
+
+    report = client.get(f"/vendors/{vid}/report").json()
+    assert report["generated"] is True
+    assert report["entity"] is not None, "entity snapshot was orphaned by the rename"
+    assert report["entity"]["domain"] == "voith.com"
+
+
+class TwoVendorSameDomainLLM:
+    """Resolves any name to the SAME domain, gates section synthesis so two generations are
+    provably in-flight at once, and counts section calls so a test can prove the expensive
+    work ran only once per domain (not once per vendor)."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.section_calls = 0
+        self.resolved = 0
+        self.both_resolved = threading.Event()
+        self.section_gate = threading.Event()
+
+    def structured(self, prompt, schema):
+        if schema is EntityCard:
+            with self._lock:
+                self.resolved += 1
+                if self.resolved >= 2:
+                    self.both_resolved.set()   # both generations are past resolution
+            return EntityCard(name="Voith", domain="voith.com", country="germany",
+                              industry="hydro", is_public=False)
+        # section synthesis blocks until released, so without the domain lock BOTH
+        # generations would be mid-section at the same time and both would count.
+        assert self.section_gate.wait(timeout=30), "section gate never opened"
+        with self._lock:
+            self.section_calls += 1
+        return Section(dimension=Dimension.LEGAL, findings=[], reasoning="x", score=5)
+
+
+def test_two_vendors_same_domain_generate_sections_only_once(tmp_path):
+    """Fix 1: single-flight is by resolved DOMAIN, not vendor_id. Two vendor rows whose
+    names resolve to the same domain must not both run the expensive Tavily/LLM section
+    work -- the per-domain lock serializes them so the second finds everything cached."""
+    llm = TwoVendorSameDomainLLM()
+    deps = Deps(search=FakeSearch(), llm=llm, cache_path=tmp_path / "db.sqlite",
+                today=date(2026, 7, 8), fetch_transcript=lambda url: (None, None))
+    client = TestClient(create_app(deps))
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    a = client.post(f"/projects/{pid}/vendors", json={"name": "Voith"}).json()["id"]
+    b = client.post(f"/projects/{pid}/vendors", json={"name": "Voith Hydro"}).json()["id"]
+
+    def drain(vid):
+        with client.stream("GET", f"/vendors/{vid}/report/stream") as resp:
+            "".join(resp.iter_text())
+
+    ta = threading.Thread(target=drain, args=(a,), daemon=True)
+    tb = threading.Thread(target=drain, args=(b,), daemon=True)
+    ta.start()
+    tb.start()
+    # wait until BOTH generations have resolved their entity and are contending for the
+    # section phase, THEN release synthesis — this forces the real concurrent race.
+    assert llm.both_resolved.wait(timeout=15), "both generations never resolved"
+    llm.section_gate.set()
+    ta.join(timeout=30)
+    tb.join(timeout=30)
+
+    # 6 = 5 Tavily dims + backlog, for ONE generation. Without the per-domain lock both
+    # vendors would generate independently and this would be ~12.
+    assert llm.section_calls == 6, f"expected one generation's worth, got {llm.section_calls}"
+    assert client.get(f"/vendors/{a}/report").json()["generated"] is True
+    assert client.get(f"/vendors/{b}/report").json()["generated"] is True
