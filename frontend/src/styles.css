@@ -112,6 +112,7 @@ body {
 .rename-btn { opacity: 0; font-size: 12px; }
 .vendor-row:hover .rename-btn, .vendor-row:focus-within .rename-btn { opacity: 1; }
 .rename-input { width: 100%; font: inherit; }
+.dup-badge { margin-left: 6px; font-size: 11px; opacity: 0.6; cursor: help; }
 
 .sidebar { width: 220px; min-width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 12px; transition: background .2s ease, border-color .2s ease; }
 .sidebar h4 { margin: 0 0 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }

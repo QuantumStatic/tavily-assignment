@@ -85,6 +85,19 @@ def get_project(project_id: int, request: Request):
         vendors = [_summarize(v, cache) for v in store.list_vendors(project_id)]
     finally:
         cache.close()
+    # Flag domain-level duplicates: name-based dedup (see add_vendor) can't catch
+    # "Voith" vs "Voith Hydro" — both resolve to the same domain once entity
+    # resolution runs, and silently share one cached report. list_vendors/_summarize
+    # iterate in id order (oldest first), so the first vendor to claim a vendor_key
+    # is the canonical one; later vendors sharing it get flagged, purely informational.
+    seen_keys: dict[str, str] = {}
+    for summ in vendors:
+        if not summ.vendor_key:
+            continue
+        if summ.vendor_key in seen_keys:
+            summ.duplicate_of = seen_keys[summ.vendor_key]
+        else:
+            seen_keys[summ.vendor_key] = summ.name
     return ProjectDetail(id=project.id, name=project.name, created_at=project.created_at,
                          vendors=vendors)
 

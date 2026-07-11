@@ -42,6 +42,14 @@ export function VendorRow({
         {draft == null ? (
           <>
             <span>{row.name}</span>
+            {row.duplicateOf && (
+              <span
+                className="dup-badge"
+                title={`Same company as ${row.duplicateOf} — the two rows share one research report`}
+              >
+                ≡
+              </span>
+            )}
             <button
               className="icon-btn rename-btn"
               aria-label="Rename vendor"
