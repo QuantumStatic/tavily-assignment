@@ -419,3 +419,14 @@ def test_delete_mid_generation_evicts_the_cache_the_zombie_run_writes(tmp_path):
             break
         time.sleep(0.05)
     assert sections == {}, "zombie generation resurrected evicted cache entries"
+
+
+def test_blank_names_are_rejected_and_stored_names_are_trimmed(tmp_path):
+    client = _client(tmp_path)
+    assert client.post("/projects", json={"name": "   "}).status_code == 422
+    pid = client.post("/projects", json={"name": "  Bridge job  "}).json()["id"]
+    assert client.get(f"/projects/{pid}").json()["name"] == "Bridge job"
+
+    assert client.post(f"/projects/{pid}/vendors", json={"name": " \t "}).status_code == 422
+    v = client.post(f"/projects/{pid}/vendors", json={"name": "  Cives Steel  "}).json()
+    assert v["name"] == "Cives Steel"
