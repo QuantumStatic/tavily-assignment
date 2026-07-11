@@ -120,6 +120,8 @@ body {
 .chosen-btn.is-chosen { color: var(--mid, #eab308); }
 .chosen-btn:hover { color: var(--mid, #eab308); }
 
+.action-divider { display: inline-block; width: 1px; height: 14px; margin: 0 6px; vertical-align: middle; background: var(--border); }
+
 .delta { font-size: 11px; color: var(--text-faint); margin-left: 4px; }
 
 .sidebar { width: 220px; min-width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 12px; transition: background .2s ease, border-color .2s ease; }
