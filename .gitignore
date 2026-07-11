@@ -16,6 +16,12 @@ venv/
 *.db
 *.sqlite
 *.sqlite3
+# SQLite WAL-mode sidecar files (don't match *.db — they end in -wal/-shm/-journal)
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
 .cache/
 
 # Structured logs (Phase 4)
