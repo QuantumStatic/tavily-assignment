@@ -11,6 +11,7 @@ type MockApiOptions = {
   vendorReports?: Record<number, unknown>
   deleteVendor?: (id: number) => { ok: boolean; status?: number; json: () => Promise<unknown> }
   addVendor?: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>
+  statsOverride?: Record<string, unknown>
 }
 
 function mockApi(opts: MockApiOptions = {}) {
@@ -59,6 +60,7 @@ function mockApi(opts: MockApiOptions = {}) {
           verdict_histogram: Array(11).fill(0), dimension_avgs: {}, dimension_histograms: {},
           weakest_dimension: null, weakest_low_count: 0,
           shortlist: [], red_flags: [], most_trusted: [],
+          ...opts.statsOverride,
         }),
       }
     }
@@ -229,6 +231,54 @@ test('selecting an already-generated vendor fetches its report from the REST end
 
   await screen.findByText('No litigation.')
   expect(fetchMock.mock.calls.some(([u]) => String(u).match(/\/vendors\/9\/report$/))).toBe(true)
+})
+
+test('clicking a dashboard shortlist row navigates into the project and actually loads the report', async () => {
+  // Regression test: openVendorFromDashboard used to only set selectedVendorId
+  // without fetching the report, leaving the panel stuck on "still generating"
+  // even though the vendor was fully researched.
+  const projects = [{ id: 1, name: 'Bridge job', created_at: 't' }]
+  const projectDetails = {
+    1: {
+      id: 1, name: 'Bridge job', created_at: 't',
+      vendors: [{
+        vendor_id: 9, name: 'Fluor Corporation', vendor_key: 'fluor.com', generated: true,
+        sections_present: 6, sections_expected: 6,
+        verdict_score: 5, verdict_reasoning: 'Weakest area: legal.',
+        dimensions: [{ dimension: 'legal', score: 2, as_of: '2026-06' }],
+      }],
+    },
+  }
+  const vendorReports = {
+    9: {
+      generated: true, vendor_key: 'fluor.com',
+      entity: { name: 'Fluor Corporation', domain: 'fluor.com', country: null, industry: null, parent: null, is_public: false, ticker: null, exchange: null },
+      verdict_score: 5, verdict_reasoning: 'Weakest area: legal.',
+      sections: [{ dimension: 'legal', score: 2, reasoning: 'Elevated legal risk.',
+                   findings: [{ claim: 'Adverse judgment reported.', citation: { url: 'https://x.com', title: 'X', source_type: 'independent', score: 0.9, as_of: '2026-06' } }] }],
+      sections_present: 6, sections_expected: 6, chosen_count: 1, projects_count: 1, dimension_deltas: {},
+    },
+  }
+  const statsOverride = {
+    vendors_total: 1, vendors_generated: 1, avg_verdict: 5,
+    shortlist: [{
+      ref: { vendor_id: 9, name: 'Fluor Corporation', project_id: 1, project_name: 'Bridge job' },
+      verdict: 5, previous_verdict: null,
+    }],
+  }
+  mockApi({ projects, projectDetails, vendorReports, statsOverride })
+  render(<App />)
+
+  // lands on the Overview by default; the shortlist row is a drill-through target
+  await screen.findByRole('heading', { name: 'Overview' })
+  const shortlistRow = await screen.findByText('Fluor Corporation')
+  await userEvent.click(shortlistRow)
+
+  // navigated into the project AND the report actually loaded (not stuck on
+  // "still generating") — the finding text proves fetchAndSetReport ran.
+  await screen.findByRole('heading', { name: 'Bridge job' })
+  await screen.findByText('Adverse judgment reported.')
+  expect(screen.queryByText(/still generating/i)).toBeNull()
 })
 
 test('selecting a partially-generated vendor shows a still-generating note instead of a blank panel', async () => {

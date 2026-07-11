@@ -110,6 +110,13 @@ export default function App() {
       .then((detail) => {
         if (cancelled) return
         dispatch({ kind: 'set', rows: detail.vendors.map(rowFromSummary) })
+        // The row for `pending` was just created fresh above (no .report yet) —
+        // fetch it directly from the just-loaded detail rather than going through
+        // selectVendor, whose `rows` closure hasn't picked up this dispatch yet.
+        if (pending != null) {
+          const summary = detail.vendors.find((v) => v.vendor_id === pending)
+          if (summary?.generated) void fetchAndSetReport(pending, summary.name)
+        }
       })
       .catch(() => { if (!cancelled) setError('Could not load the project.') })
     return () => {
@@ -248,15 +255,16 @@ export default function App() {
     }
   }
 
-  async function selectVendor(vendorId: number) {
-    setSelectedVendorId(vendorId)
-    const row = rows.find((r) => r.vendorId === vendorId)
-    if (!row || row.status !== 'done' || row.report) return
+  // Fetches a generated vendor's report and dispatches it onto its row. Shared by
+  // selectVendor (rows already loaded) and the dashboard-drill-through paths (which
+  // read the vendor's name from a freshly-fetched project detail instead of `rows`,
+  // since `rows` may not contain the target project's vendors yet).
+  async function fetchAndSetReport(vendorId: number, name: string) {
     try {
       const fetched = await api.getReport(vendorId)
       const complete = fetched.verdict_score != null && fetched.verdict_reasoning != null && fetched.entity != null
       const report = complete ? {
-        vendor_input: row.name,
+        vendor_input: name,
         entity: fetched.entity!,
         sections: fetched.sections,
         verdict_score: fetched.verdict_score!,
@@ -273,6 +281,13 @@ export default function App() {
     }
   }
 
+  async function selectVendor(vendorId: number) {
+    setSelectedVendorId(vendorId)
+    const row = rows.find((r) => r.vendorId === vendorId)
+    if (!row || row.status !== 'done' || row.report) return
+    await fetchAndSetReport(vendorId, row.name)
+  }
+
   async function setChosen(vendorId: number, chosen: boolean) {
     const row = rows.find((r) => r.vendorId === vendorId)
     if (!row) return
@@ -286,7 +301,7 @@ export default function App() {
 
   function openVendorFromDashboard(ref: VendorRef) {
     if (ref.project_id === activeId) {
-      setSelectedVendorId(ref.vendor_id)
+      void selectVendor(ref.vendor_id)
     } else {
       pendingVendorRef.current = ref.vendor_id
       setActiveId(ref.project_id)
