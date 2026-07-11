@@ -13,6 +13,7 @@ export interface VendorSummary {
   verdict_reasoning: string | null
   dimensions: DimensionScore[]
   duplicate_of?: string | null
+  chosen: boolean
 }
 
 export interface ProjectDetail {
@@ -22,6 +23,7 @@ export interface ProjectDetail {
 export interface VendorOut {
   id: number; project_id: number; name: string; vendor_key: string | null; created_at: string
   existed: boolean   // true when this name was already in the project — same row, no new research
+  chosen: boolean
 }
 
 export interface Citation {
