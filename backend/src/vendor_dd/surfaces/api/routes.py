@@ -125,6 +125,20 @@ def add_vendor(project_id: int, body: VendorIn, request: Request):
     return _vendor_out(v, existed=False)
 
 
+@router.patch("/vendors/{vendor_id}", response_model=VendorOut)
+def rename_vendor(vendor_id: int, body: VendorIn, request: Request):
+    store = _store(request)
+    name = _clean_name(body.name)
+    try:
+        v = store.rename_vendor(vendor_id, name)
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409,
+                            detail="a vendor with that name is already in this project")
+    if v is None:
+        raise HTTPException(status_code=404, detail="vendor not found")
+    return _vendor_out(v, existed=False)
+
+
 @router.delete("/vendors/{vendor_id}")
 def remove_vendor(vendor_id: int, request: Request):
     store = _store(request)

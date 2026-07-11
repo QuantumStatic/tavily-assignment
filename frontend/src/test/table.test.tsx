@@ -12,14 +12,14 @@ const summary = (over: Partial<VendorSummary>): VendorSummary => ({
 })
 
 test('renders a header per dimension plus vendor + verdict', () => {
-  render(<VendorTable rows={[]} onSelect={() => {}} onDelete={() => {}} />)
+  render(<VendorTable rows={[]} onSelect={() => {}} onDelete={() => {}} onRename={() => {}} />)
   expect(screen.getByText('Legal')).toBeInTheDocument()
   expect(screen.getByText('News')).toBeInTheDocument()
   expect(screen.getByText('Verdict')).toBeInTheDocument()
 })
 
 test('each dimension header has a help badge explaining it and the score direction', () => {
-  render(<VendorTable rows={[]} onSelect={() => {}} onDelete={() => {}} />)
+  render(<VendorTable rows={[]} onSelect={() => {}} onDelete={() => {}} onRename={() => {}} />)
   const legalHelp = screen.getByLabelText(/litigation, lawsuits/i)
   // the tooltip text is rendered in the DOM (CSS shows it on hover/focus)
   expect(legalHelp).toHaveTextContent(/10 = clean record; 0 = serious/i)
@@ -33,7 +33,7 @@ test('renders a scored row and fires onSelect on click', async () => {
     dimensions: [{ dimension: 'legal', score: 8, as_of: 't' }],
   }))
   const onSelect = vi.fn()
-  render(<VendorTable rows={[row]} onSelect={onSelect} onDelete={() => {}} />)
+  render(<VendorTable rows={[row]} onSelect={onSelect} onDelete={() => {}} onRename={() => {}} />)
   expect(screen.getByText('Cives')).toBeInTheDocument()
   expect(screen.getByText('8')).toBeInTheDocument()
   await userEvent.click(screen.getByText('Cives'))
@@ -43,7 +43,7 @@ test('renders a scored row and fires onSelect on click', async () => {
 test('a streaming row shows a pending indicator', () => {
   const row = { ...rowFromSummary(summary({})), status: 'streaming' as const,
                 cells: { legal: 'pending' as const }, verdict: 'pending' as const }
-  render(<VendorTable rows={[row]} onSelect={() => {}} onDelete={() => {}} />)
+  render(<VendorTable rows={[row]} onSelect={() => {}} onDelete={() => {}} onRename={() => {}} />)
   expect(screen.getByTestId('cell-legal-pending')).toBeInTheDocument()
   // screen readers get a text label, not just a silent pulsing dot
   expect(screen.getAllByText('pending').length).toBeGreaterThan(0)
@@ -51,14 +51,14 @@ test('a streaming row shows a pending indicator', () => {
 
 test('the delete button has an accessible name', () => {
   const row = rowFromSummary(summary({ generated: true, verdict_score: 7, dimensions: [] }))
-  render(<VendorTable rows={[row]} onSelect={() => {}} onDelete={() => {}} />)
+  render(<VendorTable rows={[row]} onSelect={() => {}} onDelete={() => {}} onRename={() => {}} />)
   expect(screen.getByRole('button', { name: /delete vendor/i })).toBeInTheDocument()
 })
 
 test('pressing Enter on a focused row selects it', async () => {
   const row = rowFromSummary(summary({ generated: true, verdict_score: 7, dimensions: [] }))
   const onSelect = vi.fn()
-  render(<VendorTable rows={[row]} onSelect={onSelect} onDelete={() => {}} />)
+  render(<VendorTable rows={[row]} onSelect={onSelect} onDelete={() => {}} onRename={() => {}} />)
   screen.getByText('Cives').closest('tr')!.focus()
   await userEvent.keyboard('{Enter}')
   expect(onSelect).toHaveBeenCalledWith(1)

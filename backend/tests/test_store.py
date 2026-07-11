@@ -244,3 +244,19 @@ def test_remove_project_cascades_vendors_and_evicts_unreferenced_cache(tmp_path)
 
     store.remove_project(p2.id)
     assert _cached_sections(tmp_path, "cives.com") == {}   # last reference gone -> evicted
+
+
+def test_rename_vendor_updates_the_name_and_migrates_the_snapshot_cache_key(tmp_path):
+    store = _store(tmp_path)
+    p = store.create_project("p")
+    v = store.add_vendor(p.id, "Cives Stel")           # typo
+    store.set_vendor_key(v.id, "cives.com")
+    _seed_cache(tmp_path, "cives stel")                 # snapshot lives under the NAME key
+    _seed_cache(tmp_path, "cives.com")                  # sections live under the domain key
+
+    renamed = store.rename_vendor(v.id, "Cives Steel")
+    assert renamed is not None and renamed.name == "Cives Steel"
+    assert _cached_sections(tmp_path, "cives stel") == {}          # old name key gone
+    assert _cached_sections(tmp_path, "cives steel") != {}         # moved to the new name
+    assert _cached_sections(tmp_path, "cives.com") != {}           # domain sections untouched
+    assert store.rename_vendor(9999, "x") is None
