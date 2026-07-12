@@ -3,7 +3,7 @@ import { bandForScore } from '../band'
 import { DIMENSIONS } from '../dimensions'
 
 const LABEL = new Map(DIMENSIONS.map((d) => [d.key, d.label]))
-const bandColor = (score: number) => `var(--${bandForScore(score) === 'good' ? 'good' : bandForScore(score) === 'mid' ? 'mid' : 'bad'})`
+const bandColor = (score: number) => `var(--${bandForScore(score)})`
 
 function Histogram({ hist }: { hist: number[] }) {
   const max = Math.max(1, ...hist)
@@ -80,7 +80,7 @@ export function Dashboard({ stats, onOpenVendor }: {
             {s.shortlist.map((e, i) => (
               <div key={e.ref.vendor_id} className="drow good" role="button" tabIndex={0}
                    onClick={() => onOpenVendor(e.ref)}
-                   onKeyDown={(ev) => { if (ev.key === 'Enter') onOpenVendor(e.ref) }}>
+                   onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onOpenVendor(e.ref) } }}>
                 <span className="medal">{i + 1}</span>
                 <span className="vname">{e.ref.name}</span>
                 <span className="why">{e.ref.project_name}</span>
@@ -102,7 +102,7 @@ export function Dashboard({ stats, onOpenVendor }: {
             {s.red_flags.map((f, i) => (
               <div key={i} className="drow bad" role="button" tabIndex={0}
                    onClick={() => onOpenVendor(f.ref)}
-                   onKeyDown={(ev) => { if (ev.key === 'Enter') onOpenVendor(f.ref) }}>
+                   onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onOpenVendor(f.ref) } }}>
                 <span className="vname">{f.ref.name}</span>
                 <span className="why">{f.detail}{f.kind === 'delivery_risk' ? ' — delivery risk' : ''}</span>
                 <span className="score">{f.score}</span>

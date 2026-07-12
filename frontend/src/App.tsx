@@ -136,6 +136,8 @@ export default function App() {
     try {
       const p = await api.createProject(name)
       setProjects((ps) => [...ps, p])
+      // keep the new project inside the Overview selection so its stats show
+      setSelectedProjectIds((s) => new Set(s).add(p.id))
       setActiveId(p.id)
     } catch {
       setError('Could not create the project.')
@@ -149,6 +151,8 @@ export default function App() {
       await api.deleteProject(projectId)
       const rest = projects.filter((x) => x.id !== projectId)
       setProjects(rest)
+      // drop the deleted id so it isn't sent to /stats as a phantom selection
+      setSelectedProjectIds((s) => { const next = new Set(s); next.delete(projectId); return next })
       if (activeId === projectId) {
         setActiveId(rest.length ? rest[0].id : null)
         if (!rest.length) dispatch({ kind: 'set', rows: [] })
@@ -356,7 +360,7 @@ export default function App() {
               <ThemeToggle theme={theme} onToggle={toggleTheme} />
             </div>
             <ProjectFilter
-              projects={projects.map((p) => ({ id: p.id, name: p.name, vendorCount: 0 }))}
+              projects={projects.map((p) => ({ id: p.id, name: p.name, vendorCount: p.vendor_count }))}
               selectedIds={selectedProjectIds}
               onChange={setSelectedProjectIds}
             />

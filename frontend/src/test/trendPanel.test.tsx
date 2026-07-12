@@ -102,6 +102,21 @@ test('shows a no-history message when the selected vendor has no points yet', as
   expect(await screen.findByText(/no history yet/i)).toBeInTheDocument()
 })
 
+test('surfaces an error instead of a false "no history" when the trend fetch fails', async () => {
+  const fetchMock = vi.fn(async (url: string) => {
+    const u = String(url)
+    if (u.match(/\/vendor-options(\?|$)/)) return { ok: true, json: async () => OPTIONS }
+    if (u.match(/\/trend(\?|$)/)) return { ok: false, status: 500, json: async () => ({}) }
+    return { ok: true, json: async () => ({}) }
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  render(<TrendPanel />)
+  await openPicker()
+  await userEvent.click(await screen.findByText('Fluor Corporation'))
+  expect(await screen.findByText(/could not load the score trend/i)).toBeInTheDocument()
+  expect(screen.queryByText(/no history yet/i)).toBeNull()
+})
+
 test('clicking outside the vendor picker closes it', async () => {
   mockApi()
   render(<TrendPanel />)
