@@ -1,4 +1,4 @@
-export interface Project { id: number; name: string; created_at: string }
+export interface Project { id: number; name: string; created_at: string; vendor_count: number }
 
 export interface DimensionScore { dimension: string; score: number; as_of: string }
 

@@ -4,8 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { Sidebar } from '../components/Sidebar'
 
 const projects = [
-  { id: 1, name: 'Bridge job', created_at: 't' },
-  { id: 2, name: 'HVAC Q3', created_at: 't' },
+  { id: 1, name: 'Bridge job', created_at: 't', vendor_count: 0 },
+  { id: 2, name: 'HVAC Q3', created_at: 't', vendor_count: 0 },
 ]
 
 function renderSidebar(props: Partial<Parameters<typeof Sidebar>[0]> = {}) {
