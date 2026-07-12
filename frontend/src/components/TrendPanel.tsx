@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import { filterByName } from '../filter'
 import type { TrendResponse, VendorOption } from '../trend'
 import { DIMENSIONS } from '../dimensions'
 import { TrendChart } from './TrendChart'
+import { useClickOutside } from '../useClickOutside'
 
 const FEATURES = [{ key: 'verdict', label: 'Verdict' }, ...DIMENSIONS.map((d) => ({ key: d.key, label: d.label }))]
 
@@ -11,6 +12,8 @@ export function TrendPanel() {
   const [options, setOptions] = useState<VendorOption[]>([])
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const pickerRef = useRef<HTMLDivElement>(null)
+  useClickOutside(pickerRef, open, () => setOpen(false))
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [dimension, setDimension] = useState('verdict')
   const [trend, setTrend] = useState<TrendResponse | null>(null)
@@ -39,7 +42,7 @@ export function TrendPanel() {
       <div className="caption">track selected vendors' scores over time</div>
 
       <div className="trend-controls">
-        <div className="project-filter">
+        <div className="project-filter" ref={pickerRef}>
           <button className="filter-trigger" onClick={() => setOpen((o) => !o)}
                   aria-haspopup="true" aria-expanded={open}>
             Vendors <span className="count">· {selected.size ? `${selected.size} selected` : 'none'}</span> <span className="caret">▾</span>
