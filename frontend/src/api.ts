@@ -1,5 +1,6 @@
 import type { Project, ProjectDetail, VendorOut, VendorReport } from './types'
 import type { DashboardStats } from './dashboard'
+import type { TrendResponse, VendorOption } from './trend'
 
 const BASE: string =
   (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8000'
@@ -60,4 +61,8 @@ export const api = {
     fetch(`${BASE}/vendors/${id}/chosen`, {
       method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ chosen }),
     }).then(json<VendorOut>),
+  getVendorOptions: () => fetch(`${BASE}/vendor-options`).then(json<VendorOption[]>),
+  getTrend: (vendorKeys: string[], dimension: string) =>
+    fetch(`${BASE}/trend?vendor_keys=${encodeURIComponent(vendorKeys.join(','))}&dimension=${encodeURIComponent(dimension)}`)
+      .then(json<TrendResponse>),
 }

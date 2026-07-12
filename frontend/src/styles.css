@@ -229,7 +229,7 @@ body {
 /* --- Dashboard (Overview) --- */
 .dashboard { display: flex; flex-direction: column; gap: 20px; }
 
-.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
 .card .label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 8px; }
 .card .big { font-size: 26px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
@@ -291,3 +291,18 @@ body {
 .mini .hist { height: 60px; }
 .mini .count { display: none; }
 .mini .n { display: none; }
+
+.trend-panel { display: flex; flex-direction: column; gap: 10px; }
+.trend-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.trend-controls .project-filter { margin-bottom: 0; }
+.trend-feature-select {
+  padding: 7px 10px; border: 1px solid var(--input-border); border-radius: 6px;
+  font-size: 13px; background: var(--bg); color: var(--text);
+}
+.trend-empty-options { padding: 8px; margin: 0; }
+.trend-chart-wrap { display: flex; flex-direction: column; gap: 10px; }
+.trend-chart { width: 100%; height: auto; }
+.trend-grid { stroke: var(--border-soft); stroke-width: 1; }
+.trend-axis-label { font-size: 8px; fill: var(--text-faint); }
+.trend-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted); }
+.trend-legend-item { display: inline-flex; align-items: center; gap: 6px; }

@@ -70,6 +70,10 @@ function mockApi(opts: MockApiOptions = {}) {
       if (opts.deleteVendor) return opts.deleteVendor(id)
       return { ok: true, json: async () => ({}) }
     }
+    if (u.match(/\/vendor-options(\?|$)/) && method === 'GET')
+      return { ok: true, json: async () => [] }
+    if (u.match(/\/trend(\?|$)/) && method === 'GET')
+      return { ok: true, json: async () => ({ dimension: 'verdict', series: [] }) }
     return { ok: true, json: async () => ({}) }
   })
   vi.stubGlobal('fetch', fetchMock)

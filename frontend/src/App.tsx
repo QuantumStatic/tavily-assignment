@@ -14,6 +14,7 @@ import { ReportPanel } from './components/ReportPanel'
 import { ThemeToggle } from './components/ThemeToggle'
 import { ProjectFilter } from './components/ProjectFilter'
 import { Dashboard } from './components/Dashboard'
+import { TrendPanel } from './components/TrendPanel'
 import { useTheme } from './theme'
 
 type RowsAction =
@@ -362,6 +363,7 @@ export default function App() {
             {stats
               ? <Dashboard stats={stats} onOpenVendor={openVendorFromDashboard} />
               : <p className="muted">Loading overview…</p>}
+            <TrendPanel />
           </>
         )}
       </main>
