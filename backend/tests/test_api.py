@@ -60,6 +60,20 @@ def test_project_and_vendor_crud(tmp_path):
     assert client.get(f"/projects/{pid}").json()["vendors"] == []
 
 
+def test_list_projects_reports_vendor_count(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "Bridge job"}).json()["id"]
+
+    def count(project_id):
+        return next(p["vendor_count"] for p in client.get("/projects").json()
+                    if p["id"] == project_id)
+
+    assert count(pid) == 0
+    client.post(f"/projects/{pid}/vendors", json={"name": "Cives Steel"})
+    client.post(f"/projects/{pid}/vendors", json={"name": "Fluor"})
+    assert count(pid) == 2
+
+
 def test_report_read_model_empty_before_generation(tmp_path):
     client = _client(tmp_path)
     pid = client.post("/projects", json={"name": "p"}).json()["id"]

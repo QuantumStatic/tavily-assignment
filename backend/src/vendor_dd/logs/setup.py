@@ -31,13 +31,9 @@ def get_logger(channel: str) -> logging.Logger:
     return logging.getLogger(f"vendor_dd.{channel}")
 
 
-_configured = False
-
-
 def configure_logging(log_dir: str | Path | None = None, level: str | None = None) -> None:
     """Idempotent: attach a rotating JSON-line file handler per channel. Safe to call
     more than once (handlers are replaced, not duplicated)."""
-    global _configured
     directory = Path(log_dir or os.getenv("VENDOR_DD_LOG_DIR", "logs"))
     directory.mkdir(parents=True, exist_ok=True)
     lvl = (level or os.getenv("VENDOR_DD_LOG_LEVEL", "INFO")).upper()
@@ -57,4 +53,3 @@ def configure_logging(log_dir: str | Path | None = None, level: str | None = Non
         handler.setFormatter(fmt)
         handler.addFilter(corr)
         logger.addHandler(handler)
-    _configured = True

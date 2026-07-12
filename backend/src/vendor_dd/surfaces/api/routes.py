@@ -103,8 +103,11 @@ def create_project(body: ProjectIn, request: Request):
 
 @router.get("/projects", response_model=list[ProjectOut])
 def list_projects(request: Request):
-    return [ProjectOut(id=p.id, name=p.name, created_at=p.created_at)
-            for p in _store(request).list_projects()]
+    store = _store(request)
+    counts = store.vendor_counts()
+    return [ProjectOut(id=p.id, name=p.name, created_at=p.created_at,
+                       vendor_count=counts.get(p.id, 0))
+            for p in store.list_projects()]
 
 
 @router.get("/projects/{project_id}", response_model=ProjectDetail)
@@ -220,7 +223,15 @@ def get_stats(request: Request, projects: str | None = None):
         rows: list[VendorRow] = []
         independent = self_reported = 0
         previous_verdict: dict[str, int] = {}
+        # trust counts span ALL projects (by domain), so they're tallied for every
+        # vendor before the selected-projects filter narrows the dashboard rows.
+        chosen_counts: dict[str, int] = {}
+        project_counts: dict[str, int] = {}
         for v in store.list_all_vendors():
+            if v.vendor_key:
+                project_counts[v.vendor_key] = project_counts.get(v.vendor_key, 0) + 1
+                if v.chosen:
+                    chosen_counts[v.vendor_key] = chosen_counts.get(v.vendor_key, 0) + 1
             if v.project_id not in selected_ids:
                 continue
             dims: dict[str, int] = {}
@@ -241,16 +252,6 @@ def get_stats(request: Request, projects: str | None = None):
                 vendor_id=v.id, name=v.name, project_id=v.project_id,
                 project_name=name_by_id.get(v.project_id, ""), vendor_key=v.vendor_key,
                 chosen=v.chosen, verdict=verdict, dims=dims))
-
-        # trust counts span ALL projects, by domain
-        chosen_counts: dict[str, int] = {}
-        project_counts: dict[str, int] = {}
-        for v in store.list_all_vendors():
-            if not v.vendor_key:
-                continue
-            project_counts[v.vendor_key] = project_counts.get(v.vendor_key, 0) + 1
-            if v.chosen:
-                chosen_counts[v.vendor_key] = chosen_counts.get(v.vendor_key, 0) + 1
     finally:
         cache.close()
 
