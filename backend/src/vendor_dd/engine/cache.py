@@ -1,58 +1,41 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from vendor_dd.db import SqliteConn
 from vendor_dd.engine.schemas import Dimension
 from vendor_dd.engine.config import TTL
-from vendor_dd.logs import get_logger
-
-_LOG = get_logger("db")
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class SQLiteCache:
+class SQLiteCache(SqliteConn):
     """Per-(vendor_key, section_type) cache. TTL is applied on read from config.TTL."""
 
     def __init__(self, path: str | Path, clock: Callable[[], datetime] = _utcnow):
+        super().__init__(path)
         self._clock = clock
-        self._conn = sqlite3.connect(str(path), check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA busy_timeout=5000")
         self._exec(
             """CREATE TABLE IF NOT EXISTS report_cache (
                  vendor_key TEXT NOT NULL,
                  section_type TEXT NOT NULL,
                  content TEXT NOT NULL,
-                 sources TEXT,
                  fetched_at TEXT NOT NULL,
                  PRIMARY KEY (vendor_key, section_type)
                )"""
         )
         self._conn.commit()
 
-    def _exec(self, sql: str, params: tuple = ()):
-        cur = self._conn.execute(sql, params)
-        _LOG.info("db.query", extra={"payload": {
-            "sql": " ".join(sql.split()), "params": list(params),
-            "rowcount": cur.rowcount, "lastrowid": cur.lastrowid,
-        }})
-        return cur
-
-    def put(self, vendor_key: str, section: Dimension, content: dict[str, Any],
-            sources: list[dict[str, Any]] | None = None) -> None:
+    def put(self, vendor_key: str, section: Dimension, content: dict[str, Any]) -> None:
         self._exec(
-            """REPLACE INTO report_cache (vendor_key, section_type, content, sources, fetched_at)
-               VALUES (?,?,?,?,?)""",
-            (vendor_key, section.value, json.dumps(content),
-             json.dumps(sources) if sources is not None else None,
-             self._clock().isoformat()),
+            """INSERT OR REPLACE INTO report_cache (vendor_key, section_type, content, fetched_at)
+               VALUES (?,?,?,?)""",
+            (vendor_key, section.value, json.dumps(content), self._clock().isoformat()),
         )
         self._conn.commit()
 
@@ -74,13 +57,6 @@ class SQLiteCache:
         if self._clock() - fetched_at >= TTL[section]:
             return None  # stale
         return json.loads(content)
-
-    def fetched_at(self, vendor_key: str, section: Dimension) -> datetime | None:
-        row = self._row(vendor_key, section)
-        return row[1] if row else None
-
-    def close(self) -> None:
-        self._conn.close()
 
     def all_sections(self, vendor_key: str) -> dict[Dimension, tuple[dict[str, Any], datetime]]:
         """Every stored section for a vendor with its fetched_at, ignoring TTL.

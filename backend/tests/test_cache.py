@@ -27,16 +27,9 @@ def test_get_missing_returns_none(tmp_path):
     assert cache.get("acme.com", Dimension.LEGAL) is None
 
 
-def test_fetched_at_exposed_for_as_of(tmp_path):
+def test_put_persists_content_and_fetched_at_via_all_sections(tmp_path):
     cache = SQLiteCache(tmp_path / "c.db", clock=_now)
-    cache.put("acme.com", Dimension.SNAPSHOT, {"x": 1})
-    assert cache.fetched_at("acme.com", Dimension.SNAPSHOT) == _now()
-
-
-def test_put_persists_and_returns_sources_via_all_sections(tmp_path):
-    cache = SQLiteCache(tmp_path / "c.db", clock=_now)
-    cache.put("acme.com", Dimension.LEGAL, {"score": 5},
-              sources=[{"url": "https://a.com", "score": 0.7}])
+    cache.put("acme.com", Dimension.LEGAL, {"score": 5})
     got = cache.all_sections("acme.com")
     assert Dimension.LEGAL in got
     content, fetched = got[Dimension.LEGAL]
@@ -55,9 +48,9 @@ def test_all_sections_ignores_ttl_and_returns_everything(tmp_path):
     assert set(got) == {Dimension.NEWS, Dimension.LEGAL}
 
 
-def test_put_without_sources_still_works(tmp_path):
+def test_put_round_trips_through_get(tmp_path):
     cache = SQLiteCache(tmp_path / "c.db", clock=_now)
-    cache.put("acme.com", Dimension.SNAPSHOT, {"name": "Acme"})   # no sources arg
+    cache.put("acme.com", Dimension.SNAPSHOT, {"name": "Acme"})
     assert cache.get("acme.com", Dimension.SNAPSHOT) == {"name": "Acme"}
 
 
