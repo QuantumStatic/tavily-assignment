@@ -47,11 +47,6 @@ export function Dashboard({ stats, onOpenVendor }: {
           <div className="hint">avg across {s.vendors_generated} researched vendors</div>
         </div>
         <div className="card">
-          <div className="label">Researched</div>
-          <div className="big">{s.vendors_generated} of {s.vendors_total}</div>
-          <div className="hint">{s.vendors_total - s.vendors_generated} pending</div>
-        </div>
-        <div className="card">
           <div className="label">Risk triage</div>
           <div className="triage">
             <span style={{ flex: s.risk_high || 0.001, background: 'var(--bad)' }} />

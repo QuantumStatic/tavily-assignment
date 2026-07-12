@@ -23,7 +23,12 @@ const stats: DashboardStats = {
 test('renders the headline verdict and coverage', () => {
   render(<Dashboard stats={stats} onOpenVendor={() => {}} />)
   expect(screen.getByText('6.4')).toBeInTheDocument()
-  expect(screen.getByText(/12 of 14/)).toBeInTheDocument()
+  expect(screen.getByText(/avg across 12 researched vendors/i)).toBeInTheDocument()
+})
+
+test('does not render a separate Researched stat card', () => {
+  render(<Dashboard stats={stats} onOpenVendor={() => {}} />)
+  expect(screen.queryByText('Researched')).toBeNull()
 })
 
 test('renders decisions: shortlist, red flags, most trusted', () => {
