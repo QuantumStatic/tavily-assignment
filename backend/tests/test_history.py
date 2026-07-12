@@ -61,3 +61,26 @@ def test_snapshot_is_not_a_valid_history_dimension(tmp_path):
     h = _hist(tmp_path)
     with pytest.raises(Exception):
         h.record("acme.com", "snapshot", 5)
+
+
+def test_series_for_returns_every_recorded_day_oldest_first(tmp_path):
+    early = ScoreHistory(tmp_path / "db.sqlite", clock=lambda: date(2026, 5, 1))
+    early.record("acme.com", "legal", 8)
+    late = ScoreHistory(tmp_path / "db.sqlite", clock=lambda: date(2026, 7, 11))
+    late.record("acme.com", "legal", 4)
+    assert late.series_for("acme.com", "legal") == [
+        ("2026-05-01", 8), ("2026-07-11", 4),
+    ]
+
+
+def test_series_for_is_empty_when_nothing_recorded(tmp_path):
+    h = _hist(tmp_path)
+    assert h.series_for("acme.com", "legal") == []
+
+
+def test_series_for_only_returns_the_requested_vendor_and_dimension(tmp_path):
+    h = _hist(tmp_path)
+    h.record("acme.com", "legal", 8)
+    h.record("acme.com", "safety", 3)
+    h.record("other.com", "legal", 5)
+    assert h.series_for("acme.com", "legal") == [("2026-07-11", 8)]

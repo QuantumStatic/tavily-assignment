@@ -699,3 +699,64 @@ def test_stream_generation_actually_writes_to_score_history(tmp_path):
     history = ScoreHistory(tmp_path / "db.sqlite")
     scores = history.scores_for(vendor_key)
     assert "verdict" in scores  # proves stream_report's engine actually recorded to history
+
+
+def test_vendor_options_lists_every_resolved_vendor_deduped_by_domain(tmp_path):
+    client = _client(tmp_path)
+    a = client.post("/projects", json={"name": "a"}).json()["id"]
+    b = client.post("/projects", json={"name": "b"}).json()["id"]
+    _generate(client, a, "Cives Steel")
+    # same vendor added again in another project, resolving to the same domain:
+    # must appear once in the options list, not twice
+    _generate(client, b, "Cives Steel")
+    options = client.get("/vendor-options").json()
+    assert options == [{"vendor_key": "cives.com", "name": "Cives Steel"}]
+
+
+def test_vendor_options_empty_when_no_vendors(tmp_path):
+    client = _client(tmp_path)
+    assert client.get("/vendor-options").json() == []
+
+
+def test_trend_returns_a_monthly_point_per_selected_vendor(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = _generate(client, pid, "Cives Steel")
+    vendor_key = client.get(f"/vendors/{vid}/report").json()["vendor_key"]
+
+    r = client.get(f"/trend?vendor_keys={vendor_key}&dimension=verdict").json()
+    assert r["dimension"] == "verdict"
+    assert len(r["series"]) == 1
+    series = r["series"][0]
+    assert series["vendor_key"] == vendor_key
+    assert series["name"] == "Cives Steel"
+    assert len(series["points"]) == 1   # single day of history so far -> one month bucket
+    assert series["points"][0]["month"] == "2026-07"
+
+
+def test_trend_supports_a_single_report_dimension_not_just_verdict(tmp_path):
+    client = _client(tmp_path)
+    pid = client.post("/projects", json={"name": "p"}).json()["id"]
+    vid = _generate(client, pid, "Cives Steel")
+    vendor_key = client.get(f"/vendors/{vid}/report").json()["vendor_key"]
+
+    r = client.get(f"/trend?vendor_keys={vendor_key}&dimension=legal").json()
+    assert r["dimension"] == "legal"
+    assert len(r["series"][0]["points"]) == 1
+
+
+def test_trend_rejects_an_unknown_dimension(tmp_path):
+    client = _client(tmp_path)
+    assert client.get("/trend?vendor_keys=x.com&dimension=bogus").status_code == 422
+
+
+def test_trend_with_no_vendor_keys_returns_empty_series(tmp_path):
+    client = _client(tmp_path)
+    r = client.get("/trend?dimension=verdict").json()
+    assert r["series"] == []
+
+
+def test_trend_for_a_vendor_with_no_history_returns_empty_points(tmp_path):
+    client = _client(tmp_path)
+    r = client.get("/trend?vendor_keys=nobody.com&dimension=verdict").json()
+    assert r["series"] == [{"vendor_key": "nobody.com", "name": "nobody.com", "points": []}]
