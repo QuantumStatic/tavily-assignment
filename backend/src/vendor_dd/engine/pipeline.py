@@ -157,8 +157,7 @@ class ReportEngine:
                             _LOG.error("section.error", extra={"payload": {"dimension": dim.value, "error": str(exc)}})
                             yield SectionError(dimension=dim, message=f"{dim.value} lookup failed")
                             continue
-                        cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"),
-                                  sources=outcome.raw_results)
+                        cache.put(vendor_key, dim, outcome.section.model_dump(mode="json"))
                         self._record_score(vendor_key, dim.value, outcome.section.score)
                         any_fresh = True
                         if dim is Dimension.NEWS:
@@ -249,7 +248,7 @@ class ReportEngine:
         except LLMError:
             # backlog synthesis is fatal (report incomplete without it) — one retry
             section = synthesize_section(Dimension.BACKLOG, results, llm=deps.llm)
-        cache.put(vendor_key, Dimension.BACKLOG, section.model_dump(mode="json"), sources=results)
+        cache.put(vendor_key, Dimension.BACKLOG, section.model_dump(mode="json"))
         return section, False
 
 

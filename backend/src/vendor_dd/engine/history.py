@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import sqlite3
 from datetime import date
 from pathlib import Path
 from typing import Callable
 
+from vendor_dd.db import SqliteConn
 from vendor_dd.engine.schemas import Dimension
-from vendor_dd.logs import get_logger
-
-_LOG = get_logger("db")
 
 
 def _today() -> date:
@@ -28,17 +25,15 @@ HISTORY_DIMENSIONS: tuple[str, ...] = tuple(
 _CHECK_LIST = ", ".join(f"'{d}'" for d in HISTORY_DIMENSIONS)
 
 
-class ScoreHistory:
+class ScoreHistory(SqliteConn):
     """Append-only institutional memory of every score ever assigned, keyed by resolved
     domain (vendor_key). Survives vendor deletion and cache eviction deliberately.
     One row per (vendor_key, dimension, day); same-day re-runs REPLACE (last write wins)."""
 
     def __init__(self, path: str | Path, clock: Callable[[], date] = _today):
+        super().__init__(path)
         self._clock = clock
-        self._conn = sqlite3.connect(str(path), check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA busy_timeout=5000")
-        self._conn.execute(
+        self._exec(
             f"""CREATE TABLE IF NOT EXISTS score_history (
                   vendor_key  TEXT NOT NULL,
                   dimension   TEXT NOT NULL CHECK (dimension IN ({_CHECK_LIST})),
@@ -48,14 +43,6 @@ class ScoreHistory:
                 )"""
         )
         self._conn.commit()
-
-    def _exec(self, sql: str, params: tuple = ()):
-        cur = self._conn.execute(sql, params)
-        _LOG.info("db.query", extra={"payload": {
-            "sql": " ".join(sql.split()), "params": list(params),
-            "rowcount": cur.rowcount, "lastrowid": cur.lastrowid,
-        }})
-        return cur
 
     def record(self, vendor_key: str, dimension: str, score: int) -> None:
         self._exec(
@@ -99,6 +86,3 @@ class ScoreHistory:
             return None
         score, recorded_on = rows[1]
         return score, recorded_on
-
-    def close(self) -> None:
-        self._conn.close()

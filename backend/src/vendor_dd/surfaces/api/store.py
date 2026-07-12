@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from vendor_dd.logs import get_logger
-
-_LOG = get_logger("db")
+from vendor_dd.db import SqliteConn
 
 
 def _utcnow_iso() -> str:
@@ -38,16 +37,20 @@ class Vendor:
     chosen: bool = False
 
 
-class Store:
-    """Projects + vendors persistence. Shares its SQLite file with the report cache."""
+class Store(SqliteConn):
+    """Projects + vendors persistence. Shares its SQLite file with the report cache.
+
+    The single connection is shared across FastAPI's threadpool workers and the
+    background report-generation thread (check_same_thread=False), so every
+    multi-statement mutation (delete cascades, refcounted cache eviction) runs under
+    `_lock` to keep it atomic with respect to concurrent writes."""
 
     def __init__(self, path: str | Path, clock: Callable[[], str] = _utcnow_iso,
                  id_gen: Callable[[], str] = _uuid_hex):
+        super().__init__(path)
         self._clock = clock
         self._id_gen = id_gen
-        self._conn = sqlite3.connect(str(path), check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA busy_timeout=5000")
+        self._lock = threading.RLock()
         self._exec(
             """CREATE TABLE IF NOT EXISTS projects (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,27 +84,25 @@ class Store:
         return Vendor(id=id_, project_id=project_id, name=name, vendor_key=vendor_key,
                       created_at=created_at, chosen=bool(chosen))
 
-    def _exec(self, sql: str, params: tuple = ()):
-        cur = self._conn.execute(sql, params)
-        _LOG.info("db.query", extra={"payload": {
-            "sql": " ".join(sql.split()), "params": list(params),
-            "rowcount": cur.rowcount, "lastrowid": cur.lastrowid,
-        }})
-        return cur
-
     def create_project(self, name: str) -> Project:
-        ts = self._clock()
-        sid = self._id_gen()
-        cur = self._exec(
-            "INSERT INTO projects (name, created_at, session_id) VALUES (?,?,?)",
-            (name, ts, sid))
-        self._conn.commit()
+        with self._lock:
+            ts = self._clock()
+            sid = self._id_gen()
+            cur = self._exec(
+                "INSERT INTO projects (name, created_at, session_id) VALUES (?,?,?)",
+                (name, ts, sid))
+            self._conn.commit()
         return Project(id=cur.lastrowid, name=name, created_at=ts, session_id=sid)
 
     def list_projects(self) -> list[Project]:
         cur = self._exec(
             "SELECT id, name, created_at, session_id FROM projects ORDER BY id")
         return [Project(*row) for row in cur.fetchall()]
+
+    def vendor_counts(self) -> dict[int, int]:
+        """Number of vendors per project id, for the Overview project filter."""
+        cur = self._exec("SELECT project_id, COUNT(*) FROM vendors GROUP BY project_id")
+        return {project_id: n for project_id, n in cur.fetchall()}
 
     def get_project(self, project_id: int) -> Project | None:
         cur = self._exec(
@@ -110,12 +111,13 @@ class Store:
         return Project(*row) if row else None
 
     def remove_project(self, project_id: int) -> None:
-        # Cascade through remove_vendor so every vendor gets the same refcounted
-        # cache eviction a single delete gets.
-        for v in self.list_vendors(project_id):
-            self.remove_vendor(v.id)
-        self._exec("DELETE FROM projects WHERE id=?", (project_id,))
-        self._conn.commit()
+        with self._lock:
+            # Cascade through remove_vendor so every vendor gets the same refcounted
+            # cache eviction a single delete gets.
+            for v in self.list_vendors(project_id):
+                self.remove_vendor(v.id)
+            self._exec("DELETE FROM projects WHERE id=?", (project_id,))
+            self._conn.commit()
 
     def find_vendor(self, project_id: int, name: str) -> Vendor | None:
         """A vendor in this project with the same name (case/space-insensitive), if any."""
@@ -126,11 +128,12 @@ class Store:
         return Store._vendor(row) if row else None
 
     def add_vendor(self, project_id: int, name: str) -> Vendor:
-        ts = self._clock()
-        cur = self._exec(
-            "INSERT INTO vendors (project_id, name, vendor_key, created_at) VALUES (?,?,?,?)",
-            (project_id, name, None, ts))
-        self._conn.commit()
+        with self._lock:
+            ts = self._clock()
+            cur = self._exec(
+                "INSERT INTO vendors (project_id, name, vendor_key, created_at) VALUES (?,?,?,?)",
+                (project_id, name, None, ts))
+            self._conn.commit()
         return Vendor(id=cur.lastrowid, project_id=project_id, name=name,
                       vendor_key=None, created_at=ts)
 
@@ -139,11 +142,12 @@ class Store:
         snapshot — is keyed by the resolved DOMAIN (vendor_key), which a rename never
         touches, so there's no cache to migrate: just update the name. Raises
         sqlite3.IntegrityError if the new name collides within the project (unique index)."""
-        if self.get_vendor(vendor_id) is None:
-            return None
-        self._exec("UPDATE vendors SET name=? WHERE id=?", (name, vendor_id))
-        self._conn.commit()
-        return self.get_vendor(vendor_id)
+        with self._lock:
+            if self.get_vendor(vendor_id) is None:
+                return None
+            self._exec("UPDATE vendors SET name=? WHERE id=?", (name, vendor_id))
+            self._conn.commit()
+            return self.get_vendor(vendor_id)
 
     def list_vendors(self, project_id: int) -> list[Vendor]:
         cur = self._exec(
@@ -164,26 +168,29 @@ class Store:
         return Store._vendor(row) if row else None
 
     def set_chosen(self, vendor_id: int, chosen: bool) -> Vendor | None:
-        if self.get_vendor(vendor_id) is None:
-            return None
-        self._exec("UPDATE vendors SET chosen=? WHERE id=?", (1 if chosen else 0, vendor_id))
-        self._conn.commit()
-        return self.get_vendor(vendor_id)
+        with self._lock:
+            if self.get_vendor(vendor_id) is None:
+                return None
+            self._exec("UPDATE vendors SET chosen=? WHERE id=?", (1 if chosen else 0, vendor_id))
+            self._conn.commit()
+            return self.get_vendor(vendor_id)
 
     def remove_vendor(self, vendor_id: int) -> None:
-        row = self._exec(
-            "SELECT name, vendor_key FROM vendors WHERE id=?", (vendor_id,)).fetchone()
-        self._exec("DELETE FROM vendors WHERE id=?", (vendor_id,))
-        if row is not None:
-            self._clear_cache(*row)
-        self._conn.commit()
+        with self._lock:
+            row = self._exec(
+                "SELECT name, vendor_key FROM vendors WHERE id=?", (vendor_id,)).fetchone()
+            self._exec("DELETE FROM vendors WHERE id=?", (vendor_id,))
+            if row is not None:
+                self._clear_cache(*row)
+            self._conn.commit()
 
     def evict_unreferenced(self, name: str, vendor_key: str | None) -> None:
         """Evict this vendor's cached research unless another vendor row still
         references it — same refcount rules as delete. Used by report generation
         when it finishes after its vendor was deleted mid-run."""
-        self._clear_cache(name, vendor_key)
-        self._conn.commit()
+        with self._lock:
+            self._clear_cache(name, vendor_key)
+            self._conn.commit()
 
     def _clear_cache(self, name: str, vendor_key: str | None) -> None:
         """Evict a deleted vendor's cached research so a re-add re-runs fresh. The cache
@@ -207,6 +214,7 @@ class Store:
             self._exec("DELETE FROM report_cache WHERE vendor_key=?", (key,))
 
     def set_vendor_key(self, vendor_id: int, vendor_key: str) -> None:
-        self._exec(
-            "UPDATE vendors SET vendor_key=? WHERE id=?", (vendor_key, vendor_id))
-        self._conn.commit()
+        with self._lock:
+            self._exec(
+                "UPDATE vendors SET vendor_key=? WHERE id=?", (vendor_key, vendor_id))
+            self._conn.commit()
