@@ -9,6 +9,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from vendor_dd.engine.cache import SQLiteCache
 from vendor_dd.engine.events import EntityResolved
+from vendor_dd.engine.history import HISTORY_DIMENSIONS
 from vendor_dd.engine.pipeline import ReportEngine
 from vendor_dd.engine.schemas import Dimension, EntityCard, Section, SourceType
 from vendor_dd.engine.synthesis import assemble_verdict
@@ -20,6 +21,7 @@ from vendor_dd.surfaces.api.schemas import (
 )
 from vendor_dd.surfaces.api.sse import to_sse_frame
 from vendor_dd.surfaces.api.store import Store, Vendor
+from vendor_dd.surfaces.api.trend import TrendResponse, TrendSeries, VendorOption, bucket_monthly
 
 router = APIRouter()
 
@@ -256,6 +258,40 @@ def get_stats(request: Request, projects: str | None = None):
         rows, previous_verdict, chosen_counts, project_counts,
         projects_total=projects_total, projects_selected=len(selected_ids),
         independent_sources=independent, self_reported_sources=self_reported)
+
+
+def _canonical_names(store: Store) -> dict[str, str]:
+    """First-seen display name per vendor_key, across every project — the same
+    canonical-name convention used elsewhere for domain-level dedup."""
+    names: dict[str, str] = {}
+    for v in store.list_all_vendors():
+        if v.vendor_key and v.vendor_key not in names:
+            names[v.vendor_key] = v.name
+    return names
+
+
+@router.get("/vendor-options", response_model=list[VendorOption])
+def get_vendor_options(request: Request):
+    """Every resolved vendor identity in the portfolio, for the trend chart's vendor
+    picker — spans all projects, not just an Overview selection."""
+    names = _canonical_names(_store(request))
+    return [VendorOption(vendor_key=k, name=n) for k, n in names.items()]
+
+
+@router.get("/trend", response_model=TrendResponse)
+def get_trend(request: Request, vendor_keys: str = "", dimension: str = "verdict"):
+    if dimension not in HISTORY_DIMENSIONS:
+        raise HTTPException(status_code=422, detail="unknown dimension")
+    keys = [k for k in vendor_keys.split(",") if k.strip()]
+    store = _store(request)
+    history = request.app.state.history
+    names = _canonical_names(store)
+    series = [
+        TrendSeries(vendor_key=key, name=names.get(key, key),
+                   points=bucket_monthly(history.series_for(key, dimension)))
+        for key in keys
+    ]
+    return TrendResponse(dimension=dimension, series=series)
 
 
 @router.get("/vendors/{vendor_id}/report", response_model=VendorReport)

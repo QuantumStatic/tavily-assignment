@@ -77,6 +77,15 @@ class ScoreHistory:
             out[dim] = (score, recorded_on)   # ORDER BY recorded_on => last wins = latest
         return out
 
+    def series_for(self, vendor_key: str, dimension: str) -> list[tuple[str, int]]:
+        """Every recorded (recorded_on, score) pair for this vendor+dimension, oldest first."""
+        cur = self._exec(
+            """SELECT recorded_on, score FROM score_history
+               WHERE vendor_key=? AND dimension=? ORDER BY recorded_on""",
+            (vendor_key, dimension),
+        )
+        return [(recorded_on, score) for recorded_on, score in cur.fetchall()]
+
     def previous(self, vendor_key: str, dimension: str) -> tuple[int, str] | None:
         """The score recorded on the second-most-recent distinct day, or None."""
         cur = self._exec(
