@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { filterByName } from '../filter'
+import { useClickOutside } from '../useClickOutside'
 
 export interface FilterProject { id: number; name: string; vendorCount: number }
 
@@ -12,6 +13,8 @@ export function ProjectFilter({
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+  useClickOutside(rootRef, open, () => setOpen(false))
   const visible = filterByName(projects, query)
   const total = projects.length
   const sel = selectedIds.size
@@ -24,7 +27,7 @@ export function ProjectFilter({
   }
 
   return (
-    <div className="project-filter">
+    <div className="project-filter" ref={rootRef}>
       <button className="filter-trigger" onClick={() => setOpen((o) => !o)}
               aria-haspopup="true" aria-expanded={open}>
         Projects <span className="count">· {summary}</span> <span className="caret">▾</span>

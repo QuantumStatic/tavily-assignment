@@ -101,3 +101,21 @@ test('shows a no-history message when the selected vendor has no points yet', as
   await userEvent.click(await screen.findByText('Fluor Corporation'))
   expect(await screen.findByText(/no history yet/i)).toBeInTheDocument()
 })
+
+test('clicking outside the vendor picker closes it', async () => {
+  mockApi()
+  render(<TrendPanel />)
+  await openPicker()
+  await screen.findByText('Fluor Corporation')
+  await userEvent.click(document.body)
+  expect(screen.queryByText('Fluor Corporation')).toBeNull()
+})
+
+test('clicking inside the vendor picker does not close it', async () => {
+  mockApi()
+  render(<TrendPanel />)
+  await openPicker()
+  await screen.findByText('Fluor Corporation')
+  await userEvent.click(screen.getByRole('searchbox', { name: /filter vendors/i }))
+  expect(screen.getByText('Fluor Corporation')).toBeInTheDocument()
+})

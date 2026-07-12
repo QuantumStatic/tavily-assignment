@@ -62,3 +62,18 @@ test('shows vendor counts on rows', async () => {
   await open()
   expect(screen.getByText(/5 vendors/i)).toBeInTheDocument()
 })
+
+test('clicking outside the dropdown closes it', async () => {
+  setup()
+  await open()
+  expect(screen.getByText('HVAC Q3')).toBeInTheDocument()
+  await userEvent.click(document.body)
+  expect(screen.queryByText('HVAC Q3')).toBeNull()
+})
+
+test('clicking inside the dropdown does not close it', async () => {
+  setup()
+  await open()
+  await userEvent.click(screen.getByRole('searchbox', { name: /filter projects/i }))
+  expect(screen.getByText('HVAC Q3')).toBeInTheDocument()
+})
