@@ -21,6 +21,7 @@ class ProjectOut(BaseModel):
     id: int
     name: str
     created_at: str
+    vendor_count: int = 0
 
 
 class VendorOut(BaseModel):
