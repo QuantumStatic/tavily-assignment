@@ -254,7 +254,15 @@ Honest about what's stubbed or deferred:
 
 ## How this was built
 
-Built with heavy use of a coding agent (Claude Code), directed test-first: spec → plan →
-red/green/refactor per task, with the design docs and plans under `docs/superpowers/`. The session
-logs are part of the submission — the intent is to show *direction* of AI tools, not unverified
-output.
+The process, in one line: **took a use case → mapped a solution → translated it into code →
+had AI write it.**
+
+- **Use case.** Start from a real workflow — a procurement team vetting vendors for an RFP —
+  and the concrete question it has to answer with evidence.
+- **Solution.** Map that to a design: entity resolution, per-dimension retrieval, cited and
+  typed findings, streaming, a comparison/portfolio surface. The design docs and specs live
+  under `docs/superpowers/`.
+- **Code.** Translate the design into a task-by-task plan with explicit interfaces and tests.
+- **AI wrote it.** A coding agent (Claude Code) implemented each task test-first (spec → plan →
+  red/green/refactor), under direction and review. Every claim in these docs was verified
+  against the running code — the point is to show *direction* of AI tools, not unverified output.
