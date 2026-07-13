@@ -71,13 +71,21 @@ surface: a portfolio verdict, a risk triage bar, the share of evidence that's in
 self-reported, a shortlist and red-flag list (each row clicks through to the vendor), and
 score distributions per dimension.
 
-![Portfolio overview dashboard](docs/assets/01-overview.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="docs/assets/01-overview-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/01-overview-light.png">
+  <img alt="Portfolio overview dashboard" src="docs/assets/01-overview-dark.png">
+</picture>
 
 **2 · Compare vendors side by side.** Inside a project, vendors sit in one table (verdict plus
 every risk dimension, color-coded), and fill in live over SSE as each dimension's research
 completes. Star the ones you're shortlisting.
 
-![Vendor comparison table](docs/assets/03-comparison.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="docs/assets/03-comparison-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/03-comparison-light.png">
+  <img alt="Vendor comparison table" src="docs/assets/03-comparison-dark.png">
+</picture>
 
 **3 · Open a cited report.** Every score is backed by findings, and every finding carries its
 source link, whether that source is **independent or self-reported**, and an **as-of date**. The
@@ -85,13 +93,21 @@ verdict explains itself ("Weakest area: legal (2/10)…"), and dimensions show h
 since last time. This is the difference between "the vendor looks risky" and something a reviewer
 can audit.
 
-![Cited vendor report panel](docs/assets/04-report.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="docs/assets/04-report-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/04-report-light.png">
+  <img alt="Cited vendor report panel" src="docs/assets/04-report-dark.png">
+</picture>
 
 **4 · Track risk over time.** Scores are institutional memory: append-only, keyed by domain, so
 they survive re-runs, renames, and even deleting the vendor. Pick vendors and a dimension to see
 the trend.
 
-![Score-over-time trend chart](docs/assets/02-trend.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)"  srcset="docs/assets/02-trend-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/02-trend-light.png">
+  <img alt="Score-over-time trend chart" src="docs/assets/02-trend-dark.png">
+</picture>
 
 ## Why Tavily is the core of the solution
 
