@@ -175,32 +175,38 @@ structured-event backbone is already what a trace exporter would sit on.
 
 ## Run it
 
-Prereqs: Python ≥3.11 with [`uv`](https://docs.astral.sh/uv/), Node ≥18. Keys for Tavily and
-OpenAI.
+**Prereqs:** Python ≥3.11, Node ≥18, and API keys for Tavily and OpenAI.
+[`uv`](https://docs.astral.sh/uv/) is optional but supported.
+
+### 1 · Keys (from the repo root)
 
 ```bash
-cp .env.example .env      # fill in TAVILY_API_KEY and OPENAI_API_KEY
+cp .env.example .env
+# then edit .env and set TAVILY_API_KEY and OPENAI_API_KEY — BOTH are required.
+# Without them the CLI/API exits with "Set TAVILY_API_KEY and OPENAI_API_KEY in .env".
 ```
 
-The backend is a standard pip-installable package (`vendor-dd`) that exposes two console
-commands, `vendor-dd` and `vendor-dd-api`:
+### 2 · Install the backend (`vendor-dd` package)
 
 ```bash
 cd backend
-pip install -e .          # or `uv pip install -e .`  (or drop -e for a non-editable install)
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .                                     # installs deps + two console commands
 ```
 
-**CLI** (fastest way to see a report):
+<sub>Prefer <code>uv</code>? Instead of the two lines above: <code>uv venv && source .venv/bin/activate && uv pip install -e .</code> — or skip installing entirely and prefix any command below with <code>uv run</code>.</sub>
+
+### 3 · See a report (CLI — fastest path)
 
 ```bash
-vendor-dd "GE Vernova"    # or, without installing: `uv run vendor-dd "GE Vernova"`
+vendor-dd "GE Vernova"
 ```
 
-**Full app** (API + web UI):
+### 4 · Full app (API + web UI) — two terminals
 
 ```bash
-# terminal 1 — API on :8000
-cd backend && vendor-dd-api        # (or `uv run vendor-dd-api`)
+# terminal 1 — API on :8000  (from backend/, with the venv activated)
+vendor-dd-api
 
 # terminal 2 — UI on :5173
 cd frontend && cp .env.example .env && npm install && npm run dev

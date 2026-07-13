@@ -11,12 +11,12 @@ Standard PEP 517 build (hatchling); installs the `vendor-dd` and `vendor-dd-api`
 
 ```bash
 cd backend
-pip install -e .            # editable, for development
-# or
-pip install .               # regular install
-# or, with uv:
-uv pip install -e .
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -e .            # editable, for development (use `pip install .` for a plain install)
 ```
+
+Prefer [uv](https://docs.astral.sh/uv/)? `uv venv && source .venv/bin/activate && uv pip install -e .`,
+or skip the install and prefix commands with `uv run`.
 
 Then set your keys (see [`.env.example`](../.env.example) at the repo root):
 
