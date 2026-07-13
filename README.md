@@ -1,56 +1,47 @@
 # Vendor Due-Diligence Agent
 
-Give it a vendor name, get back a structured, **cited** risk profile a procurement team
-could actually file — company snapshot, financial signals, legal & regulatory exposure,
-safety record, certifications, delivery/backlog health, recent news, and an overall
-verdict. Every finding carries a source URL, a source *type* (independent vs. the vendor's
-own material), and an "as of" date. Reports stream in dimension-by-dimension, and every
-score is remembered over time so you can watch a vendor's risk trend.
+Give it a vendor name, get back a structured, **cited** risk profile a procurement team could
+actually file — company snapshot, financial signals, legal & regulatory exposure, safety
+record, certifications, delivery/backlog health, recent news, and an overall verdict. Every
+finding carries a source URL, a source *type* (independent vs. the vendor's own material), and
+an "as of" date. Reports stream in dimension-by-dimension, and every score is remembered over
+time so you can watch a vendor's risk trend.
 
-Built on [Tavily](https://tavily.com) for retrieval and OpenAI's Responses API for
-structured synthesis.
+Built on [Tavily](https://tavily.com) for retrieval and OpenAI's Responses API for structured
+synthesis.
 
 ---
 
-## Why this
+## The problem
 
-The starter agent does one thing: a single Tavily search, summarized by an LLM into prose.
-That's a demo, not a tool someone can make a decision on. For a real procurement or
-vendor-risk workflow, the gaps are: *where did this claim come from, how fresh is it, can I
-trust the source, and how does this vendor compare to the others I'm evaluating?*
+Evaluating a vendor for a contract means answering: *are they solvent, are they in legal
+trouble, do they have a safety record, can they actually deliver, and can I trust where that
+answer came from?* Today that's hours of manual searching, and the output is a pile of tabs and
+a gut feel — nothing you can file, audit, or compare across the five vendors bidding on the same
+RFP.
 
-This turns that one-shot search into a **decision-grade workflow**:
+The take-home's starter agent shows the raw capability — one Tavily search, summarized by an LLM
+into prose — but it stops exactly where the *value* starts. There are no citations to check, no
+sense of whether a claim came from a court record or the vendor's own marketing page, no memory,
+and no way to compare vendor A against vendor B. It's a demo, not a tool a procurement team can
+make a decision on.
 
-- **Every claim is cited and typed.** A finding isn't "the vendor has legal issues" — it's a
-  claim, a URL, whether the source is independent or self-reported, and a date. A reviewer
-  can audit it. Scores are derived from findings, not vibes.
-- **Retrieval is engineered per risk dimension**, not one keyword-stuffed query — see
-  [How Tavily is used](#how-tavily-is-used).
-- **It's a portfolio, not a single lookup.** Vendors live in projects; a comparison table,
-  a portfolio dashboard (shortlist / red flags / most-trusted), and a score-over-time chart
-  turn N reports into a decision.
-- **It's observable.** Structured JSON logs across five channels, correlation IDs that follow
-  a run from HTTP request into the background worker, secret redaction — so you can debug a
-  bad report instead of guessing.
+## The big picture
 
-The through-line: **auditability and comparison** are what make retrieval useful to a
-customer, so that's where the engineering went.
-
-## Demo
-
-> _Screenshot / GIF placeholder — see [Run it](#run-it) to bring it up locally._
-> The Overview shows the portfolio dashboard + score-trend chart; opening a project shows
-> the live comparison table filling in over SSE; clicking a vendor opens its cited report.
-
-## How it works
+This turns that one-shot search into a **decision-grade workflow**. A vendor name goes through
+entity resolution, then six risk dimensions are retrieved *in parallel* from Tavily — each as
+several focused queries, tuned per dimension — and synthesized by the LLM into scored, cited
+sections under a schema (no free-text parsing). Results stream to the UI as each dimension lands,
+every section is cached by resolved domain, and every score is appended to a history table that
+powers a trend chart. Vendors live in projects, so N reports become a portfolio you can triage.
 
 ```
 vendor name
     │
     ▼
 ┌─────────────────┐   entity resolution: resolve the messy input ("Voith Hydro") to a
-│  Snapshot       │   canonical company + domain, so every downstream query and every
-│  (entity card)  │   cache key is stable across renames and spelling variants.
+│  Snapshot       │   canonical company + domain, so every downstream query and cache
+│  (entity card)  │   key is stable across renames and spelling variants.
 └────────┬────────┘
          │  domain (vendor_key)
          ▼
@@ -62,7 +53,7 @@ vendor name
          ▼
 ┌─────────────────┐   OpenAI Responses API (structured output): each dimension → a Section
 │  Synthesis      │   of {claim, citation(url, source_type, as_of)} findings + a 0–10 score
-│  (per section)  │   + reasoning. Nothing free-text-parsed; the schema is enforced.
+│  (per section)  │   + reasoning. The schema is enforced; nothing is regex-scraped.
 └────────┬────────┘
          │  scored, cited sections
          ▼
@@ -70,64 +61,73 @@ vendor name
 │  Verdict        │   TTL per dimension) and every score is appended to history for trends.
 └─────────────────┘
          │
-         ▼  streamed to the UI over SSE as each dimension lands
+         ▼  streamed to the UI over SSE as each dimension completes
 ```
 
-Each dimension is cached independently keyed by resolved **domain**, so a rename never
-loses research and two projects evaluating the same vendor share one set of lookups.
+## Walkthrough
 
-## How Tavily is used
+**1 · Portfolio overview.** The Overview aggregates every vendor across projects into a decision
+surface: a portfolio verdict, a risk triage bar, the share of evidence that's independent vs.
+self-reported, a shortlist and red-flag list (each row clicks through to the vendor), and
+score distributions per dimension.
 
-Retrieval quality is the product, so this is where most of the design went. Per dimension
-(`engine/config.py`):
+![Portfolio overview dashboard](docs/assets/01-overview.png)
 
-- **Several focused queries instead of one.** `legal` runs `"{name} lawsuit"`,
-  `"{name} litigation"`, `"{name} regulatory fine"`, `"{name} investigation"` separately, then
-  pools and dedupes. Each single-concept query gets clean relevance instead of one
+**2 · Compare vendors side by side.** Inside a project, vendors sit in one table — verdict plus
+every risk dimension, color-coded — and fill in live over SSE as each dimension's research
+completes. Star the ones you're shortlisting.
+
+![Vendor comparison table](docs/assets/03-comparison.png)
+
+**3 · Open a cited report.** Every score is backed by findings, and every finding carries its
+source link, whether that source is **independent or self-reported**, and an **as-of date**. The
+verdict explains itself ("Weakest area: legal (2/10)…"), and dimensions show how the score moved
+since last time. This is the difference between "the vendor looks risky" and something a reviewer
+can audit.
+
+![Cited vendor report panel](docs/assets/04-report.png)
+
+**4 · Track risk over time.** Scores are institutional memory — append-only, keyed by domain, so
+they survive re-runs, renames, and even deleting the vendor. Pick vendors and a dimension to see
+the trend.
+
+![Score-over-time trend chart](docs/assets/02-trend.png)
+
+## Why Tavily is the core of the solution
+
+Retrieval *is* the product here — the LLM only gets to be as good as what Tavily brings back — so
+this is where most of the design went (`engine/config.py`):
+
+- **Several focused queries per dimension, not one.** `legal` runs `"{name} lawsuit"`,
+  `"{name} litigation"`, `"{name} regulatory fine"`, `"{name} investigation"` as separate Tavily
+  searches, then pools and dedupes. Each single-concept query gets clean relevance instead of one
   keyword-stuffed query fighting itself.
-- **Per-dimension parameter tuning** — `topic` (`general`/`news`/`finance`), `search_depth`,
-  `max_results`, an optional recency window, and Tavily's `country` param are set per
-  dimension because "recent legal filings" and "latest audited financials" want different
-  retrieval.
-- **Source independence is enforced.** Independent dimensions (legal, safety) pass
-  `exclude_domains=[vendor domain]` so the vendor can't be the source of its own clean bill
-  of health. Financials deliberately *don't* — audited figures are self-reported by nature —
-  and each finding is tagged `independent` vs `self_reported` so the distinction is visible,
-  not hidden.
+- **Per-dimension parameter tuning.** `topic` (`general`/`news`/`finance`), `search_depth`,
+  `max_results`, an optional recency window, and Tavily's `country` param are set per dimension —
+  because "recent legal filings" and "latest audited financials" want different retrieval.
+- **Source independence is enforced, and made visible.** Independent dimensions (legal, safety)
+  pass `exclude_domains=[vendor domain]` so the vendor can't be the source of its own clean bill
+  of health. Financials deliberately *don't* — audited figures are self-reported by nature — and
+  every finding is tagged `independent` vs `self_reported` so the distinction shows up in the UI
+  (that "60% independent" stat on the dashboard is exactly this).
 - **Search on the press name, not the legal name.** Entity resolution picks the name articles
   actually use ("GE Vernova", not "GE Vernova LLC"), which materially changes recall.
-- **A recency-window lesson worth calling out:** Tavily's `start_date` silently drops any
-  result it can't assign a date to — for some vendors that's *every* result, yielding zero
-  news. So dimensions where freshness is a bonus (news, financials) use no hard window and
-  instead carry per-finding `as_of` dates. This is the kind of thing you only learn by
-  actually running retrieval against obscure private vendors, not just big public ones.
+- **A retrieval lesson worth calling out.** Tavily's `start_date` silently drops any result it
+  can't date — for some vendors that's *every* result, yielding zero news. So dimensions where
+  freshness is a bonus (news, financials) use no hard window and instead carry per-finding
+  `as_of` dates. You only learn this by running retrieval against obscure private vendors, not
+  just big public ones — which is the whole point of doing the work.
 
-Results are cached per (domain, dimension) with a per-dimension TTL, so re-opening a report
-is instant and doesn't re-spend Tavily/LLM credits.
+Results are cached per (domain, dimension) with a per-dimension TTL, so re-opening a report is
+instant and doesn't re-spend Tavily/LLM credits.
 
-## Observability
-
-The assignment calls out tracing/observability as a bonus; here it's first-class and
-industry-standard in shape (structured logs + correlation), without pulling in a vendor SDK:
-
-- **Five JSON-line channels** — `general`, `llm`, `tavily`, `http`, `db` — one structured
-  event per line (`ts, level, logger, correlation_id, event, payload`), rotating files.
-- **Correlation IDs** are minted per CLI run and per HTTP request and propagated via
-  `contextvars` — including *into the background report thread* (`copy_context`) — so a whole
-  report generation is greppable by one ID across search, LLM, and DB calls.
-- **Secret redaction** in the formatter: `TAVILY_API_KEY` / `OPENAI_API_KEY` values are
-  scrubbed from any logged payload.
-
-LangSmith / OpenTelemetry span export is the natural next step (see [What's next](#whats-next)),
-but the correlation-ID + structured-event backbone is already what a trace exporter would sit on.
-
-## Architecture
+## How it works under the hood
 
 ```
 backend/
   src/vendor_dd/
     db.py            shared SQLite connection setup (WAL, logged exec) for the stores below
-    engine/          surface-agnostic core — no web framework here
+    engine/          surface-agnostic core — no web framework in here
       config.py      per-dimension retrieval tuning
       tavily_client  Tavily search wrapper + params
       retrieval.py   multi-query pooling + dedup
@@ -146,16 +146,32 @@ frontend/            React + Vite + TS — projects, live comparison table, repo
 evals/ground_truth/  fixtures for the planned citation-support eval (see What's next)
 ```
 
-Notable engine/surface decisions:
+Decisions worth knowing:
 
-- **Engine knows nothing about HTTP.** The CLI and the API are both thin adapters over the
+- **The engine knows nothing about HTTP.** The CLI and the API are both thin adapters over the
   same `iter_events` pipeline. Adding an MCP surface later is another adapter, not a rewrite.
-- **SSE with a single-flight run registry.** Two tabs streaming the same vendor subscribe to
-  one generation (history replayed, then live events) instead of double-spending on Tavily/LLM.
+- **SSE with a single-flight run registry.** Two tabs streaming the same vendor subscribe to one
+  generation (history replayed, then live events) instead of double-spending on Tavily/LLM.
   Generation runs in a background thread and drains to the cache even if the client disconnects.
 - **SQLite for cache, project store, and score history**, sharing one file behind a small
-  `SqliteConn` base. Writes to the project store are serialized with a lock because one
-  connection is shared across the threadpool and the background worker.
+  `SqliteConn` base. Writes to the project store are serialized with a lock because one connection
+  is shared across the threadpool and the background worker.
+
+## Observability
+
+The assignment flags tracing/observability as a bonus; here it's first-class and
+industry-standard in shape (structured logs + correlation), without pulling in a vendor SDK:
+
+- **Five JSON-line channels** — `general`, `llm`, `tavily`, `http`, `db` — one structured event
+  per line (`ts, level, logger, correlation_id, event, payload`), in rotating files.
+- **Correlation IDs** are minted per CLI run and per HTTP request and propagated via `contextvars`
+  — including *into the background report thread* (`copy_context`) — so a whole report generation
+  is greppable by one ID across search, LLM, and DB calls.
+- **Secret redaction** in the formatter: `TAVILY_API_KEY` / `OPENAI_API_KEY` values are scrubbed
+  from any logged payload.
+
+Exporting this to OpenTelemetry or LangSmith spans is the natural next step — the correlation-ID +
+structured-event backbone is already what a trace exporter would sit on.
 
 ## Run it
 
@@ -193,40 +209,39 @@ cd frontend && npm test            # 114 tests (vitest)
 ```
 
 The engine is built from **pure functions** (retrieval pooling, synthesis, verdict assembly,
-dashboard aggregation, monthly bucketing) that take data and return data, so the bulk of the
-suite runs with no network and no mocks-of-mocks. LLM and Tavily are behind small `Protocol`
-interfaces with fakes. Development was test-first throughout.
+dashboard aggregation, monthly bucketing) that take data and return data, so the bulk of the suite
+runs with no network and no mocks-of-mocks. LLM and Tavily sit behind small `Protocol` interfaces
+with fakes. Development was test-first throughout.
 
 ## Design decisions & tradeoffs
 
-- **Scores from findings, not free text.** The LLM emits a schema (findings + citations +
-  score), enforced by the Responses API `parse` — no regex-scraping model prose. Costs some
-  prompt engineering; buys auditability and stable parsing.
+- **Scores from findings, not free text.** The LLM emits a schema (findings + citations + score),
+  enforced by the Responses API `parse` — no regex-scraping model prose. Costs some prompt
+  engineering; buys auditability and stable parsing.
 - **Cache/history keyed by resolved domain, not the typed name.** "Voith" and "Voith Hydro"
-  resolve to one domain and share research; a rename keeps its history. Entity resolution is
-  the price.
+  resolve to one domain and share research; a rename keeps its history. Entity resolution is the
+  price of that.
 - **No vector DB.** Retrieval is Tavily-native and per-dimension; findings are small and
   structured. A vector store would be complexity without a job here — YAGNI.
-- **SQLite over Postgres.** Single-file, zero-ops, fits a take-home and a single-node
-  deployment. The `SqliteConn` seam makes swapping it out mechanical if scale demanded it.
+- **SQLite over Postgres.** Single-file, zero-ops, right for a take-home and a single node. The
+  `SqliteConn` seam makes swapping it out mechanical if scale ever demanded it.
 
 ## What's next
 
 Honest about what's stubbed or deferred:
 
 - **Eval loop** — `evals/ground_truth/` holds fixtures; the runner (citation-support +
-  contamination checks against known vendors) is designed but not built. This is the highest-
-  value next increment for trust.
-- **Trace export** — wire the existing correlation-ID/structured-event backbone to
-  OpenTelemetry or LangSmith spans (per report run / per dimension).
+  contamination checks against known vendors) is designed but not built. Highest-value next
+  increment for trust.
+- **Trace export** — wire the existing correlation-ID/structured-event backbone to OpenTelemetry
+  or LangSmith spans (per report run / per dimension).
 - **MCP surface** — expose `check_vendor(name)` as an MCP tool over the same engine.
-- **Streaming lock scope** — the per-domain single-flight lock is currently held across SSE
-  yields; narrowing it to the cache-write window would stop a slow consumer serializing
-  same-domain work.
+- **Streaming lock scope** — the per-domain single-flight lock is currently held across SSE yields;
+  narrowing it to the cache-write window would stop a slow consumer serializing same-domain work.
 
 ## How this was built
 
-This was built with heavy use of a coding agent (Claude Code), directed test-first: spec →
-plan → red/green/refactor per task, with the design docs and plans under `docs/superpowers/`.
-The session logs are part of the submission — the intent is to show *direction* of AI tools,
-not unverified output.
+Built with heavy use of a coding agent (Claude Code), directed test-first: spec → plan →
+red/green/refactor per task, with the design docs and plans under `docs/superpowers/`. The session
+logs are part of the submission — the intent is to show *direction* of AI tools, not unverified
+output.
