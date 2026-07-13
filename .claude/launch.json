@@ -4,7 +4,7 @@
     {
       "name": "backend",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd backend && /Users/utkarsh/Desktop/Utkarsh/venvs/py-313/bin/vendor-dd-api"],
+      "runtimeArgs": ["-c", "cd backend && uv run vendor-dd-api"],
       "port": 8000
     },
     {
