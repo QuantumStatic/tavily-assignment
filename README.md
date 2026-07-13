@@ -140,7 +140,7 @@ backend/
     surfaces/        thin adapters over the engine
       cli.py         one-shot terminal report
       api/           FastAPI: projects/vendors CRUD, SSE streaming, dashboard + trend
-  tests/             184 tests
+  tests/             186 tests
 frontend/            React + Vite + TS — projects, live comparison table, report panel,
   src/               portfolio dashboard, score-trend chart (114 tests)
 evals/ground_truth/  fixtures for the planned citation-support eval (see What's next)
@@ -204,7 +204,7 @@ Open http://localhost:5173, create a project, add vendors, and watch reports str
 ## Testing
 
 ```bash
-cd backend && uv run pytest        # 184 tests
+cd backend && uv run pytest        # 186 tests
 cd frontend && npm test            # 114 tests (vitest)
 ```
 
