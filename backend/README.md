@@ -43,7 +43,7 @@ pytest                       # 186 tests
 ```
 src/vendor_dd/
   db.py            shared SQLite connection setup (WAL, logged exec)
-  engine/          retrieval, cache, synthesis, pipeline, schemas — no web framework
+  engine/          retrieval, cache, synthesis, pipeline, schemas (no web framework)
   surfaces/        cli.py + api/ (FastAPI, SSE, dashboard, trend)
   logs/            structured JSON logging (5 channels, correlation ids)
   prompts/         entity-resolution + synthesis prompts
