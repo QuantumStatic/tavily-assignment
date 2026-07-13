@@ -191,6 +191,37 @@ to debug any single report end to end. It can be upgraded to LangSmith or OpenTe
 tracing is needed; the correlation-ID and structured-event backbone is already the shape a span
 exporter would sit on, so it becomes per-run / per-dimension spans without reworking the call sites.
 
+## Some cool technical stuff
+
+A few things under the hood that were satisfying to get right:
+
+- **Single-flight streaming.** Open the same vendor in two tabs and you don't pay twice: the
+  second stream subscribes to the one in-flight generation (cached history replayed, then live
+  events). Generation runs on a background thread that drains to the cache even if every client
+  disconnects, and the request's correlation id rides into that thread via
+  `contextvars.copy_context`, so one id greps the whole run.
+- **Everything is keyed by resolved domain, not the typed name.** Entity resolution maps "Voith"
+  and "Voith Hydro" to one domain, so they share one set of lookups, a rename never loses
+  research, and the same vendor added to three projects is researched once. Deletes use
+  refcounted eviction: a vendor's cached research is dropped only if no other vendor (in any
+  project) still points at that domain.
+- **Append-only institutional memory.** Every score ever assigned is kept, keyed by domain,
+  surviving deletion, rename, and re-runs. That table powers the trend chart, bucketed to one
+  point per month by a pure function.
+- **Retrieval is engineered per dimension.** Each risk area runs several focused Tavily queries
+  (pooled and deduped) with its own topic/depth/recency tuning, and independent dimensions
+  exclude the vendor's own domain so it can't vouch for itself.
+- **Graceful stream-drop recovery.** If the live SSE connection drops mid-report, the UI falls
+  back to polling the report endpoint instead of failing the row. Generation runs to completion
+  on the server regardless of who is listening, so even a closed tab ends up with a finished,
+  cached report.
+- **Resume a half-finished report.** If a report fails partway (a flaky dimension, a dropped
+  run), the row offers a retry that re-streams only what is missing: every section that already
+  completed is served from cache, so you never re-pay for the work that succeeded.
+- **Rename-during-generation is safe.** The entity snapshot is keyed by resolved domain and the
+  `vendor_key` is backfilled mid-run, so renaming a vendor (or deleting and re-adding it) while
+  its report is still streaming never orphans or corrupts the research in flight.
+
 ## Run it
 
 **Prereqs:** Python ≥3.11, Node ≥18, and API keys for Tavily and OpenAI.
