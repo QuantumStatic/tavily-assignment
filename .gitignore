@@ -46,6 +46,7 @@ frontend/vite.config.d.ts
 
 # Assignment scaffold — do not ship in the deliverable repo
 starter_agent.py
+2606_Tavily_FDE_TakeHomeAssignment.md
 .worktrees/
 
 # superpowers brainstorming artifacts
