@@ -24,8 +24,12 @@ venv/
 *.sqlite-shm
 .cache/
 
-# Structured logs (Phase 4)
-logs/
+# Runtime structured-log output — anchored so it does NOT match the
+# `src/vendor_dd/logs/` source package (a bare `logs/` did, which silently
+# dropped that package from the built wheel).
+/logs/
+backend/logs/
+*.log
 
 # Node / frontend
 node_modules/

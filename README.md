@@ -182,18 +182,25 @@ OpenAI.
 cp .env.example .env      # fill in TAVILY_API_KEY and OPENAI_API_KEY
 ```
 
-**CLI** (fastest way to see a report):
+The backend is a standard pip-installable package (`vendor-dd`) that exposes two console
+commands, `vendor-dd` and `vendor-dd-api`:
 
 ```bash
 cd backend
-uv run vendor-dd "GE Vernova"
+pip install -e .          # or `uv pip install -e .`  (or drop -e for a non-editable install)
+```
+
+**CLI** (fastest way to see a report):
+
+```bash
+vendor-dd "GE Vernova"    # or, without installing: `uv run vendor-dd "GE Vernova"`
 ```
 
 **Full app** (API + web UI):
 
 ```bash
 # terminal 1 — API on :8000
-cd backend && uv run vendor-dd-api
+cd backend && vendor-dd-api        # (or `uv run vendor-dd-api`)
 
 # terminal 2 — UI on :5173
 cd frontend && cp .env.example .env && npm install && npm run dev
