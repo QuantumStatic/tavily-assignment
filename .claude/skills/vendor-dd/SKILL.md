@@ -1,6 +1,6 @@
 ---
 name: vendor-dd
-description: Use when working in this repo (the vendor-dd vendor due-diligence agent) — installing, running the CLI/API/UI, running tests, or navigating the engine/surfaces architecture and conventions.
+description: Use when working in this repo (the vendor-dd vendor due-diligence agent) for installing, running the CLI/API/UI, running tests, or navigating the engine/surfaces architecture and conventions.
 ---
 
 # Working in the vendor-dd repo
